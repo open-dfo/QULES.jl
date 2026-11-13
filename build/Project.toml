@@ -1,0 +1,9 @@
+[deps]
+PackageCompiler = "9b87118b-4619-50d2-8e1e-99f35a4d4d9d"
+Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
+QULES = "87e9c2e1-4f79-4ee4-a49c-2d34f9b9f5d8"
+TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+
+[compat]
+PackageCompiler = "2.4"
+julia = "1.10"

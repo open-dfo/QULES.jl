@@ -1,0 +1,43 @@
+# Julia
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+*.ji
+/docs/build/
+
+# Native library build (build/build_library.jl)
+/build/libqules/
+/build/Manifest.toml
+/build/*.o
+
+# Python binding
+__pycache__/
+*.py[cod]
+*.egg-info/
+/bindings/python/build/
+/bindings/python/dist/
+.pytest_cache/
+
+# C/C++ binding test programs
+*.exe
+*.o
+*.obj
+
+# MATLAB autosave
+*.asv
+
+# Logs and scratch
+*.log
+*.tmp
+tmp/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local agent tooling
+.omp/
+AGENTS.md
+CLAUDE.md
