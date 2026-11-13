@@ -1,14 +1,9 @@
 """Smoke tests for the QULES Python binding.
 
-Standalone (standard library only):
+    python tests/test_qules.py [bundle_dir]
 
-    python tests/test_qules.py C:\\path\\to\\bundle
-
-Under pytest, with the bundle directory in the QULES_BUNDLE environment variable:
-
-    pytest tests
-
-Exits non-zero if any check fails.
+Without `bundle_dir` the bundle installed with the package is used.
+Under pytest, set QULES_BUNDLE or install the wheel. Exits non-zero on failure.
 """
 
 import math
@@ -54,7 +49,7 @@ def check_quadratic(result, evals):
 
 
 def setup_module(module=None):
-    """pytest hook: load the bundle named by QULES_BUNDLE (main() loads from argv)."""
+    """pytest hook: load the bundle (main() loads from argv)."""
     qules.load()
 
 
@@ -93,6 +88,13 @@ def test_verbose_session():
     s, _ = run_session(quadratic, [3.0, 1.0], max_evals=40, verbose=True, log=lines.append)
     check_quadratic(s, 40)
     assert any("Termination" in line for line in lines), f"no Termination line in {lines!r}"
+
+
+def test_verbose_flat_values():
+    lines = []
+    r = qules.optimize(lambda x: 1.0, [0.5, 0.5], max_evals=40, verbose=True, log=lines.append)
+    assert r.f_best == 1.0 and r.evals < 40, r
+    assert any("flat" in line for line in lines), f"no flat-values message in {lines!r}"
 
 
 def test_session_delta_nan_until_finished():
@@ -135,10 +137,10 @@ def test_bad_arguments():
 
 
 def main(argv):
-    if len(argv) != 2:
-        print(f"usage: {argv[0]} <bundle_dir>", file=sys.stderr)
+    if len(argv) > 2:
+        print(f"usage: {argv[0]} [bundle_dir]", file=sys.stderr)
         return 2
-    qules.load(argv[1])
+    qules.load(argv[1] if len(argv) == 2 else None)
     print("QULES version", ".".join(map(str, qules.version())))
     tests = [fn for name, fn in globals().items() if name.startswith("test_") and callable(fn)]
     failed = 0

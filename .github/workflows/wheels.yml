@@ -1,0 +1,65 @@
+name: Wheels
+
+on:
+  push:
+    branches: [multiplatform]
+  workflow_dispatch:
+
+jobs:
+  wheel:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04, macos-14]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: "1.12.6"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instantiate QULES
+        run: julia --startup-file=no --project=. -e 'using Pkg; Pkg.instantiate()'
+
+      - name: Build native bundle
+        run: julia --startup-file=no --project=build build/build_library.jl
+
+      - name: Build wheel
+        run: python bindings/python/build_wheel.py
+
+      - name: Apply manylinux tag
+        if: runner.os == 'Linux'
+        run: |
+          python -m pip install --quiet auditwheel wheel
+          whl=$(ls bindings/python/dist/qules-*-linux_x86_64.whl)
+          auditwheel show "$whl" | tee auditwheel.txt
+          tag=$(grep -o 'manylinux_[0-9]*_[0-9]*_x86_64' auditwheel.txt | head -n 1)
+          test -n "$tag"
+          python -m wheel tags --remove --platform-tag "$tag" "$whl"
+          ls -l bindings/python/dist
+
+      - name: Install wheel
+        run: python -m pip install bindings/python/dist/qules-*.whl
+
+      - name: Test
+        working-directory: ${{ runner.temp }}
+        run: python "$GITHUB_WORKSPACE/bindings/python/tests/test_qules.py"
+
+      - name: Stress test
+        working-directory: ${{ runner.temp }}
+        run: python "$GITHUB_WORKSPACE/bindings/python/tests/test_stress.py"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.os }}
+          path: bindings/python/dist/qules-*.whl

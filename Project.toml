@@ -1,6 +1,6 @@
 name = "QULES"
 uuid = "87e9c2e1-4f79-4ee4-a49c-2d34f9b9f5d8"
-version = "0.1.0"
+version = "0.1.2"
 authors = ["F. Demirci"]
 
 [deps]

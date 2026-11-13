@@ -1,21 +1,30 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "qules"
 dynamic = ["version"]
-description = "Python binding for the QULES black-box optimizer native bundle (ctypes, no dependencies)"
+description = "QULES derivative-free optimizer (Windows x64)"
 readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.9"
 dependencies = []
 classifiers = [
     "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows",
 ]
 
+[project.urls]
+Homepage = "https://github.com/open-dfo/QULES.jl"
+
 [tool.setuptools]
 packages = ["qules"]
+
+# Present only in wheels built by build_wheel.py.
+[tool.setuptools.package-data]
+qules = ["_bundle/**/*"]
 
 [tool.setuptools.dynamic]
 version = { attr = "qules.__version__" }

@@ -8,6 +8,7 @@ using QULES: qules_set_log_mode, qules_log_read, NativeLog, MOI,
 quadratic(x) = (x[1] - 1.0)^2 + 10.0 * (x[2] + 2.0)^2
 rosenbrock(x) =
     sum(100.0 * (x[i + 1] - x[i]^2)^2 + (1.0 - x[i])^2 for i in 1:(length(x) - 1))
+flat(x) = 1.0
 
 function c_objective(n::Csize_t, x::Ptr{Cdouble}, f::Ptr{Cvoid})::Cdouble
     objective = unsafe_pointer_to_objref(f)::Base.RefValue{Function}
@@ -16,10 +17,11 @@ end
 
 c_log(::Cstring, ::Ptr{Cvoid})::Cvoid = nothing
 
-# The 3-D case exercises geometry repair as well as the basic solver path.
+# The 3-D case exercises geometry repair; the constant one stops on flat values.
 const CASES = (
     (quadratic, [3.0, 1.0], 8),
     (rosenbrock, [-1.2, 1.0, 0.5], 80),
+    (flat, [0.5, 0.5], 20),
 )
 
 function optimize_c(callback, objective, x_start, max_evals, verbose, rotation)
@@ -91,8 +93,22 @@ function rare_log_paths()
     return nothing
 end
 
-precompile(Core.kwcall, (NamedTuple{(:io,), Tuple{NativeLog}}, typeof(QULES.print_inner_failure),
-                         MOI.TerminationStatusCode, Int))
+# Every keyword call the solver makes with `io = config.log_io`. Each is
+# dispatched at run time on the concrete NamedTuple type, so each variant must
+# be compiled into the bundle; fail the build if one cannot be.
+const LOG_IO = NamedTuple{(:io,), Tuple{NativeLog}}
+const LOG_CALLS = (
+    (LOG_IO, typeof(QULES.print_iteration_header)),
+    (LOG_IO, typeof(QULES.print_iteration), SampleSet, Int, Int, Float64, String),
+    (LOG_IO, typeof(QULES.print_inner_failure), MOI.TerminationStatusCode, Int),
+    (NamedTuple{(:function_value_range, :io), Tuple{Nothing, NativeLog}},
+     typeof(QULES.print_termination), SampleSet, Int, Float64, QULESConfig, Vector{String}),
+    (NamedTuple{(:function_value_range, :io), Tuple{Float64, NativeLog}},
+     typeof(QULES.print_termination), SampleSet, Int, Float64, QULESConfig, Vector{String}),
+)
+for signature in LOG_CALLS
+    precompile(Core.kwcall, signature) || error("cannot precompile kwcall$signature")
+end
 
 function run_workload()
     callback = @cfunction(c_objective, Cdouble, (Csize_t, Ptr{Cdouble}, Ptr{Cvoid}))

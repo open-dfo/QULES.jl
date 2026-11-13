@@ -1,18 +1,22 @@
-# Builds the Windows x64 native library bundle. Run from the repository root:
+# Builds the native library bundle for the host platform (Windows, Linux or
+# macOS). Run from the repository root:
 #   julia --startup-file=no --project=build build/build_library.jl [output_directory]
-# Output (default build/libqules): bin/qules.dll plus the runtime it needs,
-# include/qules.h and include/julia_init.h. Distribute the whole directory.
+# Output (default build/libqules): bin/qules.dll on Windows, lib/libqules.so on
+# Linux or lib/libqules.dylib on macOS, plus the runtime it needs and
+# include/qules.h. Distribute the whole directory.
 using Pkg
 using TOML
 
 VERSION >= v"1.10" || error("The library build requires Julia 1.10 or newer.")
-Sys.iswindows() && Sys.ARCH === :x86_64 ||
-    error("Build this Windows x64 library with Windows x64 Julia.")
+Sys.iswindows() || Sys.islinux() || Sys.isapple() ||
+    error("Unsupported platform: build on Windows, Linux or macOS.")
 length(ARGS) <= 1 || error("Usage: build_library.jl [output_directory]")
 
 const BUILD_DIR = @__DIR__
 const PACKAGE_DIR = dirname(BUILD_DIR)
 const OUTPUT_DIR = isempty(ARGS) ? joinpath(BUILD_DIR, "libqules") : abspath(only(ARGS))
+const LIBRARY = Sys.iswindows() ? joinpath(OUTPUT_DIR, "bin", "qules.dll") :
+                joinpath(OUTPUT_DIR, "lib", Sys.isapple() ? "libqules.dylib" : "libqules.so")
 
 # Never delete or overwrite an existing bundle, even after an interrupted build.
 ispath(OUTPUT_DIR) && error("Output already exists: $OUTPUT_DIR. Choose a fresh output directory.")
@@ -46,6 +50,8 @@ using PackageCompiler  # only in this build process
 # Exercise the native entry points with a separate build-only workload.
 # Compile the source package, not the PackageCompiler build environment.
 const WORKLOAD_FILE = joinpath(BUILD_DIR, "precompile_library.jl")
+# qules_init.c keeps Windows paths in UTF-16; elsewhere PackageCompiler's default works.
+const INIT_FILE = Sys.iswindows() ? (; julia_init_c_file=joinpath(BUILD_DIR, "qules_init.c")) : (;)
 
 PackageCompiler.create_library(
     PACKAGE_DIR,
@@ -53,7 +59,7 @@ PackageCompiler.create_library(
     lib_name="qules",
     precompile_execution_file=WORKLOAD_FILE,
     header_files=[joinpath(BUILD_DIR, "qules.h")],
-    julia_init_c_file=joinpath(BUILD_DIR, "qules_init.c"),
+    INIT_FILE...,
     incremental=false,
     filter_stdlibs=true,
     include_transitive_dependencies=true,
@@ -67,21 +73,29 @@ rm(joinpath(BUILD_DIR, "qules_init.o"); force=true)  # PackageCompiler leaves it
 # ---------------------------------------------------------------------------
 # Trim. Everything removed here was verified unused by running the C, C++,
 # Python and MATLAB test programs against the trimmed bundle.
-const BIN_DIR = joinpath(OUTPUT_DIR, "bin")
 const ARTIFACTS_DIR = joinpath(OUTPUT_DIR, "share", "julia", "artifacts")
 
 function remove_file(path)
-    chmod(path, 0o777)  # artifacts are installed read-only
+    islink(path) || chmod(path, 0o777)  # artifacts are installed read-only
     rm(path)
 end
 
-# Julia compiler: unusable without IR. Base libraries QULES never loads:
-# 16/32-bit PCRE, GMP C++ bindings, and unversioned duplicates of libgmp/libmpfr.
-for name in ("libjulia-codegen.dll", "libLLVM-18jl.dll",
-             "libpcre2-16.dll", "libpcre2-16-0.dll", "libpcre2-32.dll", "libpcre2-32-0.dll",
-             "libpcre2-posix-3.dll", "libgmpxx.dll", "libgmpxx-4.dll",
-             "libgmp.dll", "libmpfr.dll")
-    remove_file(joinpath(BIN_DIR, name))
+# Julia compiler: unusable without IR.
+if Sys.iswindows()
+    # Also Base libraries QULES never loads: 16/32-bit PCRE, GMP C++ bindings,
+    # and unversioned duplicates of libgmp/libmpfr.
+    for name in ("libjulia-codegen.dll", "libLLVM-18jl.dll",
+                 "libpcre2-16.dll", "libpcre2-16-0.dll", "libpcre2-32.dll", "libpcre2-32-0.dll",
+                 "libpcre2-posix-3.dll", "libgmpxx.dll", "libgmpxx-4.dll",
+                 "libgmp.dll", "libmpfr.dll")
+        remove_file(joinpath(OUTPUT_DIR, "bin", name))
+    end
+else
+    for (root, _, files) in walkdir(joinpath(OUTPUT_DIR, "lib")), file in files
+        if startswith(file, "libjulia-codegen") || startswith(file, "libLLVM")
+            remove_file(joinpath(root, file))
+        end
+    end
 end
 
 # Build-time material shipped inside artifacts: static/import libraries,
@@ -99,14 +113,17 @@ for (root, _, files) in walkdir(ARTIFACTS_DIR), file in files
     end
 end
 
-# Native debug sections: large, never needed at run time.
-strip_tool = Sys.which("strip")
+# Native debug sections: large, never needed at run time. Skipped on macOS,
+# where stripping would invalidate the ad-hoc code signatures.
+is_shared_library(file) = Sys.iswindows() ? endswith(lowercase(file), ".dll") :
+                          occursin(r"\.so(\.\d+)*$", file)
+strip_tool = Sys.isapple() ? nothing : Sys.which("strip")
 if strip_tool === nothing
-    @warn "strip not found; DLL debug sections kept (bundle is larger)"
+    Sys.isapple() || @warn "strip not found; debug sections kept (bundle is larger)"
 else
     for (root, _, files) in walkdir(OUTPUT_DIR), file in files
-        endswith(lowercase(file), ".dll") || continue
         path = joinpath(root, file)
+        is_shared_library(file) && !islink(path) || continue
         chmod(path, 0o755)
         run(`$strip_tool --strip-debug $path`)
     end
@@ -114,5 +131,5 @@ end
 
 total = sum(filesize(joinpath(root, f)) for (root, _, files) in walkdir(OUTPUT_DIR) for f in files)
 println("QULES library bundle: ", OUTPUT_DIR)
-println("Windows x64 library: ", joinpath(BIN_DIR, "qules.dll"))
+println("Native library: ", LIBRARY)
 println("Bundle size: ", round(total / 2^20; digits=1), " MiB")

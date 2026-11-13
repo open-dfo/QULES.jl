@@ -1,8 +1,9 @@
 """Private ctypes layer for the QULES native bundle.
 
-Locates ``bin/qules.dll`` inside a bundle directory, makes the bundle's
-dependent DLLs resolvable, initializes the embedded Julia runtime exactly once
-per process and declares the C signatures from ``qules.h`` / ``julia_init.h``.
+Locates the native library inside a bundle directory (``bin/qules.dll``,
+``lib/libqules.so`` or ``lib/libqules.dylib``), initializes the embedded Julia
+runtime exactly once per process and declares the C signatures from
+``qules.h`` / ``julia_init.h``.
 
 Do not import this module directly; use the ``qules`` package API.
 """
@@ -12,10 +13,14 @@ from __future__ import annotations
 import atexit
 import ctypes
 import os
+import sys
 from typing import Optional
 
-#: Environment variable consulted by ``qules.load()`` when no directory is given.
+#: Environment variable that overrides the bundle shipped inside the package.
 BUNDLE_ENV = "QULES_BUNDLE"
+
+#: Bundle copied into the package by build_wheel.py.
+PACKAGED_BUNDLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_bundle")
 
 c_double_p = ctypes.POINTER(ctypes.c_double)
 
@@ -30,18 +35,30 @@ _dll_dir = None                      # os.add_dll_directory handle, kept alive f
 _argv = None                         # argv passed to init_julia, kept alive for the process
 
 
+def library_path(bundle_dir: str) -> str:
+    """Path of the native library inside `bundle_dir` for this platform."""
+    if sys.platform == "win32":
+        return os.path.join(bundle_dir, "bin", "qules.dll")
+    name = "libqules.dylib" if sys.platform == "darwin" else "libqules.so"
+    return os.path.join(bundle_dir, "lib", name)
+
+
 def resolve_bundle_dir(bundle_dir: Optional[str]) -> str:
-    """Return the absolute bundle directory, falling back to ``$QULES_BUNDLE``."""
+    """Return the absolute bundle directory: the argument, else ``$QULES_BUNDLE``,
+    else the bundle shipped inside the package."""
     if bundle_dir is None:
         bundle_dir = os.environ.get(BUNDLE_ENV)
-        if not bundle_dir:
+    if not bundle_dir:
+        if not os.path.isfile(library_path(PACKAGED_BUNDLE)):
             raise ValueError(
-                f"no bundle directory given and the {BUNDLE_ENV} environment variable is not set")
+                "this qules installation contains no native bundle; pass its directory "
+                f"to qules.load() or set the {BUNDLE_ENV} environment variable")
+        bundle_dir = PACKAGED_BUNDLE
     return os.path.abspath(os.fspath(bundle_dir))
 
 
 def load(bundle_dir: Optional[str]) -> ctypes.CDLL:
-    """Load the bundle's ``qules.dll`` and initialize Julia; idempotent.
+    """Load the bundle's native library and initialize Julia; idempotent.
 
     Julia can be initialized only once per process, so a second call with the
     same bundle returns the already loaded library and a second call with a
@@ -57,18 +74,20 @@ def load(bundle_dir: Optional[str]) -> ctypes.CDLL:
                 "only one bundle can be loaded per process")
         return _lib
 
-    bin_dir = os.path.join(bundle_dir, "bin")
-    dll_path = os.path.join(bin_dir, "qules.dll")
-    if not os.path.isfile(dll_path):
-        raise FileNotFoundError(f"qules.dll not found in {bin_dir}")
+    lib_path = library_path(bundle_dir)
+    if not os.path.isfile(lib_path):
+        raise FileNotFoundError(f"{os.path.basename(lib_path)} not found in {bundle_dir}")
 
-    # Julia loads its dependents by name: make the bin directory visible both
-    # to LoadLibrary (add_dll_directory) and to the Julia loader (PATH).
-    if hasattr(os, "add_dll_directory"):
+    if sys.platform == "win32":
+        # Julia loads its dependents by name: make bin/ visible both to
+        # LoadLibrary (add_dll_directory) and to the Julia loader (PATH).
+        bin_dir = os.path.dirname(lib_path)
         _dll_dir = os.add_dll_directory(bin_dir)
-    os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
-
-    lib = ctypes.CDLL(dll_path)
+        os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+        lib = ctypes.CDLL(lib_path)
+    else:
+        # Dependents are found through the library's rpath.
+        lib = ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL)
     _declare(lib)
     _argv = (ctypes.c_char_p * 2)(b"qules", None)
     lib.init_julia(1, _argv)
@@ -79,12 +98,8 @@ def load(bundle_dir: Optional[str]) -> ctypes.CDLL:
 
 
 def require() -> ctypes.CDLL:
-    """Return the loaded library or raise if ``qules.load`` has not been called."""
-    if _lib is None:
-        raise RuntimeError(
-            "QULES is not loaded: call qules.load(bundle_dir) first "
-            f"(or set {BUNDLE_ENV} and call qules.load())")
-    return _lib
+    """Return the loaded library, loading the default bundle on first use."""
+    return _lib if _lib is not None else load(None)
 
 
 def decode(data: Optional[bytes]) -> str:

@@ -1,18 +1,17 @@
 # QULES for Python
 
-Python binding for the QULES native bundle. Windows x64, Python 3.9+.
+Python package for the QULES derivative-free optimizer. Windows x64, Python 3.9+.
 
 ## Install
 
 ```sh
-pip install ./bindings/python
+pip install qules
 ```
 
 ## Usage
 
 ```python
 import qules
-qules.load(r"C:\path\to\libqules")
 
 f = lambda x: (x[0] - 1)**2 + 10 * (x[1] + 2)**2
 r = qules.optimize(f, [3.0, 1.0], max_evals=150)
@@ -31,8 +30,13 @@ with qules.Session([3.0, 1.0], max_evals=150) as s:
     r = s.best()
 ```
 
-## Test
+## Building the wheel
 
 ```sh
-python bindings/python/tests/test_qules.py C:\path\to\libqules
+julia --startup-file=no --project=build build/build_library.jl
+python bindings/python/build_wheel.py
 ```
+
+The wheel is written to `bindings/python/dist/`. To test it, install it and run
+`python bindings/python/tests/test_qules.py` and, before a release,
+`python bindings/python/tests/test_stress.py` (about 15 minutes).
