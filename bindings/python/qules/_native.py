@@ -57,6 +57,28 @@ def resolve_bundle_dir(bundle_dir: Optional[str]) -> str:
     return os.path.abspath(os.fspath(bundle_dir))
 
 
+def restore_symlinks(bundle_dir: str) -> None:
+    """Recreate the library symlinks listed by build_wheel.py; wheels cannot
+    contain symlinks, so each library is shipped once under its real name."""
+    manifest = os.path.join(bundle_dir, "symlinks.txt")
+    if not os.path.isfile(manifest):
+        return
+    with open(manifest, encoding="utf-8") as lines:
+        for line in lines:
+            relative, target = line.rstrip("\n").split("\t")
+            path = os.path.join(bundle_dir, relative)
+            if os.path.lexists(path):
+                continue
+            try:
+                os.symlink(target, path)
+            except FileExistsError:  # created by a concurrent first import
+                pass
+            except OSError as exc:
+                raise RuntimeError(
+                    f"cannot create {path}; install qules in a writable location "
+                    "such as a virtual environment") from exc
+
+
 def load(bundle_dir: Optional[str]) -> ctypes.CDLL:
     """Load the bundle's native library and initialize Julia; idempotent.
 
@@ -86,6 +108,7 @@ def load(bundle_dir: Optional[str]) -> ctypes.CDLL:
         os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
         lib = ctypes.CDLL(lib_path)
     else:
+        restore_symlinks(bundle_dir)
         # Dependents are found through the library's rpath.
         lib = ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL)
     _declare(lib)

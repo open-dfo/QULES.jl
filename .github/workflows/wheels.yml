@@ -13,10 +13,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-22.04, macos-14]
+        include:
+          - os: windows-latest
+          # The bundle links against the build machine's glibc (2.35 on 22.04).
+          - os: ubuntu-22.04
+            plat-name: manylinux_2_35_x86_64
+          - os: macos-15
     defaults:
       run:
         shell: bash
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
     steps:
       - uses: actions/checkout@v4
 
@@ -35,18 +42,10 @@ jobs:
         run: julia --startup-file=no --project=build build/build_library.jl
 
       - name: Build wheel
-        run: python bindings/python/build_wheel.py
-
-      - name: Apply manylinux tag
-        if: runner.os == 'Linux'
         run: |
-          python -m pip install --quiet auditwheel wheel
-          whl=$(ls bindings/python/dist/qules-*-linux_x86_64.whl)
-          auditwheel show "$whl" | tee auditwheel.txt
-          tag=$(grep -o 'manylinux_[0-9]*_[0-9]*_x86_64' auditwheel.txt | head -n 1)
-          test -n "$tag"
-          python -m wheel tags --remove --platform-tag "$tag" "$whl"
-          ls -l bindings/python/dist
+          args=()
+          if [ -n "${{ matrix.plat-name }}" ]; then args=(--plat-name "${{ matrix.plat-name }}"); fi
+          python bindings/python/build_wheel.py "${args[@]}"
 
       - name: Install wheel
         run: python -m pip install bindings/python/dist/qules-*.whl
