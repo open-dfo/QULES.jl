@@ -70,6 +70,18 @@ PackageCompiler.create_library(
 )
 rm(joinpath(BUILD_DIR, "qules_init.o"); force=true)  # PackageCompiler leaves it beside the source
 
+# PackageCompiler's macOS rpaths are relative to the host executable, so a
+# host such as Python cannot find libjulia. Search beside the library instead,
+# then restore the ad-hoc signature that install_name_tool invalidates.
+if Sys.isapple()
+    load_commands = read(`otool -l $LIBRARY`, String)
+    for rpath in ("@loader_path", "@loader_path/julia")
+        occursin("path $rpath ", load_commands) ||
+            run(`install_name_tool -add_rpath $rpath $LIBRARY`)
+    end
+    run(`codesign --force --sign - $LIBRARY`)
+end
+
 # ---------------------------------------------------------------------------
 # Trim. Everything removed here was verified unused by running the C, C++,
 # Python and MATLAB test programs against the trimmed bundle.
