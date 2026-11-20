@@ -1,4 +1,4 @@
-"""Python binding for the QULES optimizer (Windows x64 native bundle).
+"""Python binding for the QULES optimizer (bundled native library).
 
 Uses only ctypes. `load` starts Julia once per process; it is shut down at
 interpreter exit. See README.md for usage.
