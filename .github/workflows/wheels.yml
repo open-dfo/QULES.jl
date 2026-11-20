@@ -54,6 +54,16 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: python "$GITHUB_WORKSPACE/bindings/python/tests/test_qules.py"
 
+      # Julia wraps redirected output in IOContext when NO_COLOR or FORCE_COLOR
+      # is set; check both with output going to a pipe and to a file.
+      - name: Test with NO_COLOR and FORCE_COLOR
+        working-directory: ${{ runner.temp }}
+        run: |
+          test="$GITHUB_WORKSPACE/bindings/python/tests/test_qules.py"
+          NO_COLOR=1 python "$test" 2>&1 | cat
+          FORCE_COLOR=1 python "$test" > out.txt 2>&1 || { cat out.txt; exit 1; }
+          cat out.txt
+
       - name: Stress test
         working-directory: ${{ runner.temp }}
         run: python "$GITHUB_WORKSPACE/bindings/python/tests/test_stress.py"

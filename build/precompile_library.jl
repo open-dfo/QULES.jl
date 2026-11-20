@@ -110,7 +110,32 @@ for signature in LOG_CALLS
     precompile(Core.kwcall, signature) || error("cannot precompile kwcall$signature")
 end
 
+# Julia's startup (Base._reinit_stdio) wraps a stdout/stderr that is not a
+# terminal in IOContext(io, :color => Bool) when NO_COLOR or FORCE_COLOR is set.
+# Without these specializations init_julia aborts with MissingCodeError when the
+# host's output is redirected to a file (IOStream) or a pipe (PipeEndpoint).
+const COLOR_STDIO = (IOStream, Base.PipeEndpoint)
+for io in COLOR_STDIO
+    precompile(IOContext, (io, Pair{Symbol, Bool})) ||
+        error("cannot precompile IOContext($io, Pair{Symbol, Bool})")
+end
+
+function color_stdio_paths()
+    path = tempname()
+    open(path, "w") do file
+        IOContext(file, :color => true)
+        IOContext(file, :color => false)
+    end
+    rm(path)
+    pipe = Base.link_pipe!(Pipe())
+    IOContext(pipe.in, :color => true)
+    IOContext(pipe.in, :color => false)
+    close(pipe)
+    return nothing
+end
+
 function run_workload()
+    color_stdio_paths()
     callback = @cfunction(c_objective, Cdouble, (Csize_t, Ptr{Cdouble}, Ptr{Cvoid}))
     log_callback = @cfunction(c_log, Cvoid, (Cstring, Ptr{Cvoid}))
 
