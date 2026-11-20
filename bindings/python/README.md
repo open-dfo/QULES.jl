@@ -1,7 +1,9 @@
 # QULES for Python
 
 Python package for the QULES derivative-free optimizer. Python 3.9+ on
-Windows x64, Linux x86_64 (glibc 2.35+) and macOS arm64 (Apple silicon).
+Windows x64, Linux x86_64 and aarch64 with glibc 2.28+ (RHEL/Rocky 8+, most
+HPC clusters, Ubuntu 20.04+, Debian 11+), and macOS 11+ on Apple silicon and
+Intel.
 
 ## Install
 
