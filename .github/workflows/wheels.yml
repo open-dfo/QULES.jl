@@ -76,7 +76,7 @@ jobs:
 
       - name: Install wheel
         if: ${{ !matrix.manylinux }}
-        run: python -m pip install bindings/python/dist/qules-*.whl
+        run: python -m pip install bindings/python/dist/pyqules-*.whl
 
       - name: Test
         if: ${{ !matrix.manylinux }}
@@ -91,7 +91,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: wheel-${{ matrix.platform }}
-          path: bindings/python/dist/qules-*.whl
+          path: bindings/python/dist/pyqules-*.whl
 
   # Install each wheel on a machine without Julia, as a user would, on other OS
   # versions than the build machine: Rocky Linux 8 (glibc 2.28, as on HPC
@@ -160,7 +160,7 @@ jobs:
           [ -x "$py" ] || py="$RUNNER_TEMP/venv/Scripts/python.exe"
           # pip older than 20.3 (Rocky 8's python39) rejects manylinux_2_28 wheels.
           "$py" -m pip install -U pip
-          "$py" -m pip install --no-index dist/qules-*.whl
+          "$py" -m pip install --no-index dist/pyqules-*.whl
           echo "PY=$py" >> "$GITHUB_ENV"
 
       # Julia wraps redirected output in IOContext when NO_COLOR or FORCE_COLOR

@@ -101,7 +101,7 @@ def main():
         subprocess.run([sys.executable, "-m", "pip", "wheel", "--no-deps", "-w", str(dist),
                         str(stage)], check=True)
 
-    for wheel in sorted(dist.glob(f"qules-*-py3-none-{plat_name}.whl")):
+    for wheel in sorted(dist.glob(f"pyqules-*-py3-none-{plat_name}.whl")):
         print(f"{wheel}  {wheel.stat().st_size / 2**20:.1f} MiB")
     return 0
 

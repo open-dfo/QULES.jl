@@ -23,7 +23,7 @@ julia --startup-file=no --project=. -e 'using Pkg; Pkg.instantiate()'
 julia --startup-file=no --project=build build/build_library.jl
 "$python" bindings/python/build_wheel.py --plat-name "manylinux_2_28_$arch"
 
-"$python" -m pip install bindings/python/dist/qules-*.whl
+"$python" -m pip install bindings/python/dist/pyqules-*.whl
 cd /tmp
 "$python" /io/bindings/python/tests/test_qules.py
 "$python" /io/bindings/python/tests/test_stress.py

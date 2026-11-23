@@ -5,7 +5,7 @@ Python package for the QULES derivative-free optimizer.
 ## Install
 
 ```sh
-pip install qules
+pip install pyqules
 ```
 
 ## Usage
