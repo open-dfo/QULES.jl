@@ -5,7 +5,8 @@
 `--bundle` defaults to build/libqules (see build/build_library.jl). The wheel
 is written to bindings/python/dist/. The default tag is win_amd64 on Windows,
 the oldest macOS the bundle's libraries support on macOS, and linux_<arch> on
-Linux (pass the manylinux tag of the build machine instead).
+Linux (pass the manylinux tag of the build machine instead). Install the wheel
+and run tests/test_qules.py; before a release also tests/test_stress.py.
 """
 
 import argparse

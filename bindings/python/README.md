@@ -30,17 +30,6 @@ with pyqules.Session([3.0, 1.0], max_evals=150) as s:
     r = s.best()
 ```
 
-## Building the wheel
-
-```sh
-julia --startup-file=no --project=build build/build_library.jl
-python bindings/python/build_wheel.py
-```
-
-The wheel is written to `bindings/python/dist/`. To test it, install it and run
-`python bindings/python/tests/test_qules.py` and, before a release,
-`python bindings/python/tests/test_stress.py` (about 15 minutes).
-
 ## Requirements
 
 - Python 3.9+
