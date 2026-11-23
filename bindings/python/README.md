@@ -11,6 +11,11 @@ Intel.
 pip install qules
 ```
 
+On Linux, pip 20.3 or newer is required (older pip reports "not a supported
+wheel on this platform"). Older systems such as RHEL/Rocky 8 ship an older pip;
+upgrade it first with `python -m pip install --upgrade pip`, preferably in a
+virtual environment.
+
 ## Usage
 
 ```python

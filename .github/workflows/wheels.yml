@@ -158,6 +158,8 @@ jobs:
           "${PYTHON:-python}" -m venv "$RUNNER_TEMP/venv"
           py="$RUNNER_TEMP/venv/bin/python"
           [ -x "$py" ] || py="$RUNNER_TEMP/venv/Scripts/python.exe"
+          # pip older than 20.3 (Rocky 8's python39) rejects manylinux_2_28 wheels.
+          "$py" -m pip install -U pip
           "$py" -m pip install --no-index dist/qules-*.whl
           echo "PY=$py" >> "$GITHUB_ENV"
 
