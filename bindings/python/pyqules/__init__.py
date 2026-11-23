@@ -16,7 +16,7 @@ from . import _native
 
 __all__ = ["load", "optimize", "Session", "Result", "QulesError", "version"]
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 
 Objective = Callable[[List[float]], float]
 LogSink = Callable[[str], None]
@@ -131,7 +131,7 @@ def optimize(f: Objective, x0: Sequence[float], *, max_evals: int = 300, delta0:
 class Session:
     """Ask/tell driver for the same algorithm as `optimize()`.
 
-        with qules.Session(x0, max_evals=40) as s:
+        with pyqules.Session(x0, max_evals=40) as s:
             while (x := s.ask()) is not None:
                 s.tell(f(x))
             result = s.best()

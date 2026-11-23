@@ -5,7 +5,7 @@ Locates the native library inside a bundle directory (``bin/qules.dll``,
 runtime exactly once per process and declares the C signatures from
 ``qules.h`` / ``julia_init.h``.
 
-Do not import this module directly; use the ``qules`` package API.
+Do not import this module directly; use the ``pyqules`` package API.
 """
 
 from __future__ import annotations
@@ -51,8 +51,8 @@ def resolve_bundle_dir(bundle_dir: Optional[str]) -> str:
     if not bundle_dir:
         if not os.path.isfile(library_path(PACKAGED_BUNDLE)):
             raise ValueError(
-                "this qules installation contains no native bundle; pass its directory "
-                f"to qules.load() or set the {BUNDLE_ENV} environment variable")
+                "this pyqules installation contains no native bundle; pass its directory "
+                f"to pyqules.load() or set the {BUNDLE_ENV} environment variable")
         bundle_dir = PACKAGED_BUNDLE
     return os.path.abspath(os.fspath(bundle_dir))
 
@@ -75,7 +75,7 @@ def restore_symlinks(bundle_dir: str) -> None:
                 pass
             except OSError as exc:
                 raise RuntimeError(
-                    f"cannot create {path}; install qules in a writable location "
+                    f"cannot create {path}; install pyqules in a writable location "
                     "such as a virtual environment") from exc
 
 

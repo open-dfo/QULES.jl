@@ -22,14 +22,14 @@ classifiers = [
 Homepage = "https://github.com/open-dfo/QULES.jl"
 
 [tool.setuptools]
-packages = ["qules"]
+packages = ["pyqules"]
 
 # Present only in wheels built by build_wheel.py.
 [tool.setuptools.package-data]
-qules = ["_bundle/**/*"]
+pyqules = ["_bundle/**/*"]
 
 [tool.setuptools.dynamic]
-version = { attr = "qules.__version__" }
+version = { attr = "pyqules.__version__" }
 
 # pytest's default fd-level capture replaces the process's stdout/stderr file
 # descriptors, which crashes the embedded Julia runtime during init_julia.

@@ -20,7 +20,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
-SYMLINKS = "symlinks.txt"  # read by qules._native
+SYMLINKS = "symlinks.txt"  # read by pyqules._native
 
 
 def library(bundle):
@@ -85,10 +85,10 @@ def main():
     dist = HERE / "dist"
     dist.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
-        stage = Path(tmp) / "qules"
+        stage = Path(tmp) / "pyqules"
         shutil.copytree(HERE, stage, ignore=shutil.ignore_patterns(
             "dist", "build", "tests", "*.egg-info", "__pycache__"))
-        packaged = stage / "qules" / "_bundle"
+        packaged = stage / "pyqules" / "_bundle"
         links = []
         # include/ is only needed by C hosts.
         for part in ("bin" if sys.platform == "win32" else "lib", "share"):

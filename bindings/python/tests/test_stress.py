@@ -12,11 +12,11 @@ import time
 import traceback
 
 try:
-    import qules
+    import pyqules as qules
 except ImportError:  # running from a source checkout without installing
     import os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    import qules
+    import pyqules as qules
 
 MESSAGES = {
     "max_evals": "Evaluation budget reached",
