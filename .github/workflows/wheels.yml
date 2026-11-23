@@ -4,6 +4,11 @@ on:
   push:
     branches: [multiplatform]
   workflow_dispatch:
+    inputs:
+      wheels-from-run:
+        description: Skip the build and test the wheels of this earlier run ID
+        required: false
+        type: string
 
 env:
   JULIA_VERSION: "1.12.6"
@@ -15,6 +20,7 @@ env:
 jobs:
   build:
     name: build ${{ matrix.platform }}
+    if: ${{ !inputs.wheels-from-run }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
     strategy:
@@ -93,6 +99,11 @@ jobs:
   test:
     name: test ${{ matrix.platform }} on ${{ matrix.container || matrix.os }} (Python ${{ matrix.python }})
     needs: build
+    # Also runs when the build is skipped because wheels-from-run is given.
+    if: ${{ !failure() && !cancelled() }}
+    permissions:
+      actions: read
+      contents: read
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
     timeout-minutes: 30
@@ -115,9 +126,18 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
+        if: ${{ !inputs.wheels-from-run }}
         with:
           name: wheel-${{ matrix.platform }}
           path: dist
+
+      - uses: actions/download-artifact@v4
+        if: ${{ inputs.wheels-from-run }}
+        with:
+          name: wheel-${{ matrix.platform }}
+          path: dist
+          run-id: ${{ inputs.wheels-from-run }}
+          github-token: ${{ github.token }}
 
       # Rocky packages Python 3.9 as python39 and installs python3.9.
       - name: Install Python (Rocky Linux)
@@ -134,7 +154,7 @@ jobs:
 
       - name: Install wheel in a fresh venv
         run: |
-          if [ "$(uname)" = Linux ]; then ldd --version | head -1; fi
+          if [ "$(uname)" = Linux ]; then ldd --version | sed -n 1p; fi
           "${PYTHON:-python}" -m venv "$RUNNER_TEMP/venv"
           py="$RUNNER_TEMP/venv/bin/python"
           [ -x "$py" ] || py="$RUNNER_TEMP/venv/Scripts/python.exe"
