@@ -106,7 +106,7 @@ jobs:
       contents: read
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -174,3 +174,6 @@ jobs:
           NO_COLOR=1 "$PY" "$test" 2>&1 | cat
           FORCE_COLOR=1 "$PY" "$test" > out.txt 2>&1 || { cat out.txt; exit 1; }
           cat out.txt
+
+      - name: Stress test
+        run: cd "$RUNNER_TEMP" && "$PY" "$GITHUB_WORKSPACE/bindings/python/tests/test_stress.py"
