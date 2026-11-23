@@ -98,12 +98,6 @@ result = optimize_qules(
 pip install pyqules
 ```
 
-```python
-import pyqules
-
-r = pyqules.optimize(lambda x: (x[0] - 1)**2 + 10 * (x[1] + 2)**2, [3.0, 1.0], max_evals=150)
-r.x_best, r.f_best, r.evals
-```
-
-Windows, Linux and macOS; see [`bindings/python`](bindings/python).
+Runs on Windows, Linux and macOS without a Julia installation. Usage examples,
+options and requirements: [`bindings/python`](bindings/python).
 
