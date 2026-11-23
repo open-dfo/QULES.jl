@@ -9,6 +9,7 @@ Under pytest, set QULES_BUNDLE or install the wheel. Exits non-zero on failure.
 import math
 import os
 import sys
+import time
 import traceback
 
 try:
@@ -134,6 +135,16 @@ def test_bad_arguments():
         pass
     else:
         raise AssertionError("empty x0 accepted")
+
+
+def test_single_core():
+    """At most one busy core unless a BLAS thread count is set."""
+    if any(v in os.environ for v in ("OPENBLAS_NUM_THREADS", "GOTO_NUM_THREADS", "OMP_NUM_THREADS")):
+        return
+    wall, cpu = time.perf_counter(), time.process_time()
+    qules.optimize(rosenbrock, [-1.2, 1.0] * 5, max_evals=400)
+    wall, cpu = time.perf_counter() - wall, time.process_time() - cpu
+    assert cpu < 1.5 * wall + 0.1, f"CPU time {cpu:.2f} s for {wall:.2f} s wall time: several cores busy"
 
 
 def main(argv):

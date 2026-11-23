@@ -2,6 +2,7 @@
 module NativePrecompile
 
 using QULES
+using QULES: LinearAlgebra
 using QULES: qules_set_log_mode, qules_log_read, NativeLog, MOI,
              LOG_MODE_CALLBACK, LOG_MODE_BUFFER, LOG_MODE_STDOUT
 
@@ -136,6 +137,8 @@ end
 
 function run_workload()
     color_stdio_paths()
+    # limit_blas_threads skips this when the build environment sets a BLAS thread count.
+    LinearAlgebra.BLAS.set_num_threads(LinearAlgebra.BLAS.get_num_threads())
     callback = @cfunction(c_objective, Cdouble, (Csize_t, Ptr{Cdouble}, Ptr{Cvoid}))
     log_callback = @cfunction(c_log, Cvoid, (Cstring, Ptr{Cvoid}))
 

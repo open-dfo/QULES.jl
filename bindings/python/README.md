@@ -1,20 +1,12 @@
 # QULES for Python
 
-Python package for the QULES derivative-free optimizer. Python 3.9+ on
-Windows x64, Linux x86_64 and aarch64 with glibc 2.28+ (RHEL/Rocky 8+, most
-HPC clusters, Ubuntu 20.04+, Debian 11+), and macOS 11+ on Apple silicon and
-Intel.
+Python package for the QULES derivative-free optimizer.
 
 ## Install
 
 ```sh
 pip install qules
 ```
-
-On Linux, pip 20.3 or newer is required (older pip reports "not a supported
-wheel on this platform"). Older systems such as RHEL/Rocky 8 ship an older pip;
-upgrade it first with `python -m pip install --upgrade pip`, preferably in a
-virtual environment.
 
 ## Usage
 
@@ -48,3 +40,10 @@ python bindings/python/build_wheel.py
 The wheel is written to `bindings/python/dist/`. To test it, install it and run
 `python bindings/python/tests/test_qules.py` and, before a release,
 `python bindings/python/tests/test_stress.py` (about 15 minutes).
+
+## Requirements
+
+- Python 3.9+
+- Windows x64
+- Linux x86_64 or aarch64, glibc 2.28+, pip 20.3+
+- macOS 11+, Apple silicon or Intel
