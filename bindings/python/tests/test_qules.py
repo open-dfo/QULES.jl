@@ -139,7 +139,6 @@ def test_bad_arguments():
 
 
 def test_single_core():
-    """At most one busy core unless a BLAS thread count is set."""
     if any(v in os.environ for v in BLAS_THREAD_VARS):
         return
     wall, cpu = time.perf_counter(), time.process_time()
@@ -150,15 +149,16 @@ def test_single_core():
 
 BLAS_THREAD_VARS = ("OPENBLAS_NUM_THREADS", "GOTO_NUM_THREADS", "OMP_NUM_THREADS")
 
-# Runs in a fresh process: the OpenBLAS thread count right after loading, and
-# whether OPENBLAS_NUM_THREADS is still set.
 BLAS_PROBE = """
-import ctypes, glob, os
+import ctypes, os, sys
 from pyqules import _native
 _native.load(None)
-libs = [p for p in glob.glob(os.path.join(_native.resolve_bundle_dir(None), "**", "libopenblas64_*"),
-                             recursive=True) if p.endswith((".dll", ".dylib")) or ".so" in p]
-print(ctypes.CDLL(sorted(libs)[0]).openblas_get_num_threads64_(), "OPENBLAS_NUM_THREADS" in os.environ)
+if sys.platform == "win32":
+    path = ("bin", "libopenblas64_.dll")
+else:
+    path = ("lib", "julia", "libopenblas64_." + ("dylib" if sys.platform == "darwin" else "so"))
+lib = ctypes.CDLL(os.path.join(_native.resolve_bundle_dir(None), *path))
+print(lib.openblas_get_num_threads64_(), "OPENBLAS_NUM_THREADS" in os.environ)
 """
 
 
@@ -171,11 +171,11 @@ def blas_threads_at_load(**env):
 
 
 def test_one_blas_thread_at_load():
-    """OpenBLAS starts one thread (Julia's default is half the cores) unless the
-    host sets a count, and the temporary setting is removed after loading."""
-    assert blas_threads_at_load() == (1, False)
-    assert blas_threads_at_load(OPENBLAS_NUM_THREADS="2") == (2, True)
-    assert blas_threads_at_load(OMP_NUM_THREADS="2")[0] == 2
+    for env, expected in (({}, (1, False)), ({"OPENBLAS_NUM_THREADS": "2"}, (2, True))):
+        got = blas_threads_at_load(**env)
+        assert got == expected, f"{env or 'no variable'}: (threads, still set) = {got}, expected {expected}"
+    got = blas_threads_at_load(OMP_NUM_THREADS="2")[0]
+    assert got == 2, f"OMP_NUM_THREADS=2: {got} threads"
 
 
 def main(argv):

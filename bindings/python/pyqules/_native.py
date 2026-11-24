@@ -22,7 +22,6 @@ BUNDLE_ENV = "QULES_BUNDLE"
 #: Bundle copied into the package by build_wheel.py.
 PACKAGED_BUNDLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_bundle")
 
-#: BLAS thread-count variables a host may set; the first two are OpenBLAS's.
 BLAS_THREAD_VARS = ("OPENBLAS_NUM_THREADS", "GOTO_NUM_THREADS", "OMP_NUM_THREADS")
 
 c_double_p = ctypes.POINTER(ctypes.c_double)
@@ -103,9 +102,6 @@ def load(bundle_dir: Optional[str]) -> ctypes.CDLL:
     if not os.path.isfile(lib_path):
         raise FileNotFoundError(f"{os.path.basename(lib_path)} not found in {bundle_dir}")
 
-    # Julia gives BLAS half the cores and OpenBLAS starts that many threads
-    # when it loads; QULES uses one. Unless the host chose a count, set one
-    # only while the libraries load, so later imports (numpy) are unaffected.
     set_blas = not any(name in os.environ for name in BLAS_THREAD_VARS)
     if set_blas:
         os.environ["OPENBLAS_NUM_THREADS"] = "1"
