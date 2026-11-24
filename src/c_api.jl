@@ -192,7 +192,21 @@ function deliver_log(text::String)
     return nothing
 end
 
+# One BLAS thread unless the host sets a count; Julia's default is half the cores.
+const BLAS_THREADS_SET = Ref(false)
+
+function limit_blas_threads()
+    BLAS_THREADS_SET[] && return nothing
+    BLAS_THREADS_SET[] = true
+    if !(haskey(ENV, "OPENBLAS_NUM_THREADS") || haskey(ENV, "GOTO_NUM_THREADS") ||
+         haskey(ENV, "OMP_NUM_THREADS"))
+        LinearAlgebra.BLAS.set_num_threads(1)
+    end
+    return nothing
+end
+
 function native_config(max_evals, delta0, delta_min, delta_max, verbose, rotation)
+    limit_blas_threads()
     return QULESConfig(
         max_evals = Int(max_evals),
         Delta0 = Float64(delta0),

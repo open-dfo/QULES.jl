@@ -1,0 +1,178 @@
+name: Wheels
+
+# Started by hand (Actions page or `gh workflow run wheels.yml`); a full run takes ~90 min.
+on:
+  workflow_dispatch:
+    inputs:
+      wheels-from-run:
+        description: Skip the build and test the wheels of this earlier run ID
+        required: false
+        type: string
+
+env:
+  JULIA_VERSION: "1.12.6"
+
+# Platforms follow numpy/scipy/nlopt: Linux wheels are built in the manylinux_2_28
+# container (glibc 2.28: RHEL/Rocky 8+ and most HPC clusters, Ubuntu 20.04+),
+# macOS for Apple silicon and Intel, Windows x64. Julia does not ship tier 1
+# builds for Windows on ARM or musl Linux, so those have no wheel.
+jobs:
+  build:
+    name: build ${{ matrix.platform }}
+    if: ${{ !inputs.wheels-from-run }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x86_64
+            os: windows-2022
+          - platform: macos-arm64
+            os: macos-15
+          - platform: macos-x86_64
+            os: macos-15-intel
+          - platform: linux-x86_64
+            os: ubuntu-24.04
+            manylinux: quay.io/pypa/manylinux_2_28_x86_64
+          - platform: linux-aarch64
+            os: ubuntu-24.04-arm
+            manylinux: quay.io/pypa/manylinux_2_28_aarch64
+    defaults:
+      run:
+        shell: bash
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      # Linux: build, install and test (including the stress test) in the container.
+      - name: Build and test in manylinux container
+        if: matrix.manylinux
+        run: |
+          docker run --rm -v "$PWD:/io" -w /io ${{ matrix.manylinux }} \
+            bash .github/scripts/manylinux_wheel.sh "$JULIA_VERSION"
+
+      - uses: julia-actions/setup-julia@v2
+        if: ${{ !matrix.manylinux }}
+        with:
+          version: ${{ env.JULIA_VERSION }}
+
+      - uses: actions/setup-python@v5
+        if: ${{ !matrix.manylinux }}
+        with:
+          python-version: "3.11"
+
+      - name: Build native bundle
+        if: ${{ !matrix.manylinux }}
+        run: |
+          julia --startup-file=no --project=. -e 'using Pkg; Pkg.instantiate()'
+          julia --startup-file=no --project=build build/build_library.jl
+
+      - name: Build wheel
+        if: ${{ !matrix.manylinux }}
+        run: python bindings/python/build_wheel.py
+
+      - name: Install wheel
+        if: ${{ !matrix.manylinux }}
+        run: python -m pip install bindings/python/dist/pyqules-*.whl
+
+      - name: Test
+        if: ${{ !matrix.manylinux }}
+        working-directory: ${{ runner.temp }}
+        run: python "$GITHUB_WORKSPACE/bindings/python/tests/test_qules.py"
+
+      - name: Stress test
+        if: ${{ !matrix.manylinux }}
+        working-directory: ${{ runner.temp }}
+        run: python "$GITHUB_WORKSPACE/bindings/python/tests/test_stress.py"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.platform }}
+          path: bindings/python/dist/pyqules-*.whl
+
+  # Install each wheel on a machine without Julia, as a user would, on other OS
+  # versions than the build machine: Rocky Linux 8 (glibc 2.28, as on HPC
+  # clusters), current Ubuntu/macOS/Windows, and the oldest supported Python.
+  test:
+    name: test ${{ matrix.platform }} on ${{ matrix.container || matrix.os }} (Python ${{ matrix.python }})
+    needs: build
+    # Also runs when the build is skipped because wheels-from-run is given.
+    if: ${{ !failure() && !cancelled() }}
+    permissions:
+      actions: read
+      contents: read
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-x86_64, os: ubuntu-24.04, container: "rockylinux:8", python: "3.9" }
+          - { platform: linux-x86_64, os: ubuntu-24.04, python: "3.14" }
+          - { platform: linux-aarch64, os: ubuntu-24.04-arm, container: "rockylinux:8", python: "3.9" }
+          - { platform: linux-aarch64, os: ubuntu-24.04-arm, python: "3.14" }
+          - { platform: macos-arm64, os: macos-26, python: "3.14" }
+          - { platform: macos-x86_64, os: macos-15-intel, python: "3.9" }
+          - { platform: windows-x86_64, os: windows-2025, python: "3.9" }
+          - { platform: windows-x86_64, os: windows-2025, python: "3.14" }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        if: ${{ !inputs.wheels-from-run }}
+        with:
+          name: wheel-${{ matrix.platform }}
+          path: dist
+
+      - uses: actions/download-artifact@v4
+        if: ${{ inputs.wheels-from-run }}
+        with:
+          name: wheel-${{ matrix.platform }}
+          path: dist
+          run-id: ${{ inputs.wheels-from-run }}
+          github-token: ${{ github.token }}
+
+      # Rocky packages Python 3.9 as python39 and installs python3.9.
+      - name: Install Python (Rocky Linux)
+        if: matrix.container
+        run: |
+          version=${{ matrix.python }}
+          dnf install -y "python${version//./}"
+          echo "PYTHON=python$version" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-python@v5
+        if: ${{ !matrix.container }}
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install wheel in a fresh venv
+        run: |
+          if [ "$(uname)" = Linux ]; then ldd --version | sed -n 1p; fi
+          "${PYTHON:-python}" -m venv "$RUNNER_TEMP/venv"
+          py="$RUNNER_TEMP/venv/bin/python"
+          [ -x "$py" ] || py="$RUNNER_TEMP/venv/Scripts/python.exe"
+          # pip older than 20.3 (Rocky 8's python39) rejects manylinux_2_28 wheels.
+          "$py" -m pip install -U pip
+          "$py" -m pip install --no-index dist/pyqules-*.whl
+          echo "PY=$py" >> "$GITHUB_ENV"
+
+      # Julia wraps redirected output in IOContext when NO_COLOR or FORCE_COLOR
+      # is set; check both with output going to a pipe and to a file.
+      # RUNNER_TEMP, unlike runner.temp, is the container path in container jobs.
+      - name: Test
+        run: |
+          test="$GITHUB_WORKSPACE/bindings/python/tests/test_qules.py"
+          cd "$RUNNER_TEMP"
+          "$PY" "$test"
+          NO_COLOR=1 "$PY" "$test" 2>&1 | cat
+          FORCE_COLOR=1 "$PY" "$test" > out.txt 2>&1 || { cat out.txt; exit 1; }
+          cat out.txt
+
+      - name: Stress test
+        run: cd "$RUNNER_TEMP" && "$PY" "$GITHUB_WORKSPACE/bindings/python/tests/test_stress.py"

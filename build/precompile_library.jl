@@ -2,12 +2,14 @@
 module NativePrecompile
 
 using QULES
+using QULES: LinearAlgebra
 using QULES: qules_set_log_mode, qules_log_read, NativeLog, MOI,
              LOG_MODE_CALLBACK, LOG_MODE_BUFFER, LOG_MODE_STDOUT
 
 quadratic(x) = (x[1] - 1.0)^2 + 10.0 * (x[2] + 2.0)^2
 rosenbrock(x) =
     sum(100.0 * (x[i + 1] - x[i]^2)^2 + (1.0 - x[i])^2 for i in 1:(length(x) - 1))
+flat(x) = 1.0
 
 function c_objective(n::Csize_t, x::Ptr{Cdouble}, f::Ptr{Cvoid})::Cdouble
     objective = unsafe_pointer_to_objref(f)::Base.RefValue{Function}
@@ -16,10 +18,11 @@ end
 
 c_log(::Cstring, ::Ptr{Cvoid})::Cvoid = nothing
 
-# The 3-D case exercises geometry repair as well as the basic solver path.
+# The 3-D case exercises geometry repair; the constant one stops on flat values.
 const CASES = (
     (quadratic, [3.0, 1.0], 8),
     (rosenbrock, [-1.2, 1.0, 0.5], 80),
+    (flat, [0.5, 0.5], 20),
 )
 
 function optimize_c(callback, objective, x_start, max_evals, verbose, rotation)
@@ -91,10 +94,51 @@ function rare_log_paths()
     return nothing
 end
 
-precompile(Core.kwcall, (NamedTuple{(:io,), Tuple{NativeLog}}, typeof(QULES.print_inner_failure),
-                         MOI.TerminationStatusCode, Int))
+# Every keyword call the solver makes with `io = config.log_io`. Each is
+# dispatched at run time on the concrete NamedTuple type, so each variant must
+# be compiled into the bundle; fail the build if one cannot be.
+const LOG_IO = NamedTuple{(:io,), Tuple{NativeLog}}
+const LOG_CALLS = (
+    (LOG_IO, typeof(QULES.print_iteration_header)),
+    (LOG_IO, typeof(QULES.print_iteration), SampleSet, Int, Int, Float64, String),
+    (LOG_IO, typeof(QULES.print_inner_failure), MOI.TerminationStatusCode, Int),
+    (NamedTuple{(:function_value_range, :io), Tuple{Nothing, NativeLog}},
+     typeof(QULES.print_termination), SampleSet, Int, Float64, QULESConfig, Vector{String}),
+    (NamedTuple{(:function_value_range, :io), Tuple{Float64, NativeLog}},
+     typeof(QULES.print_termination), SampleSet, Int, Float64, QULESConfig, Vector{String}),
+)
+for signature in LOG_CALLS
+    precompile(Core.kwcall, signature) || error("cannot precompile kwcall$signature")
+end
+
+# Julia's startup (Base._reinit_stdio) wraps a stdout/stderr that is not a
+# terminal in IOContext(io, :color => Bool) when NO_COLOR or FORCE_COLOR is set.
+# Without these specializations init_julia aborts with MissingCodeError when the
+# host's output is redirected to a file (IOStream) or a pipe (PipeEndpoint).
+const COLOR_STDIO = (IOStream, Base.PipeEndpoint)
+for io in COLOR_STDIO
+    precompile(IOContext, (io, Pair{Symbol, Bool})) ||
+        error("cannot precompile IOContext($io, Pair{Symbol, Bool})")
+end
+
+function color_stdio_paths()
+    path = tempname()
+    open(path, "w") do file
+        IOContext(file, :color => true)
+        IOContext(file, :color => false)
+    end
+    rm(path)
+    pipe = Base.link_pipe!(Pipe())
+    IOContext(pipe.in, :color => true)
+    IOContext(pipe.in, :color => false)
+    close(pipe)
+    return nothing
+end
 
 function run_workload()
+    color_stdio_paths()
+    # limit_blas_threads skips this when the build environment sets a BLAS thread count.
+    LinearAlgebra.BLAS.set_num_threads(LinearAlgebra.BLAS.get_num_threads())
     callback = @cfunction(c_objective, Cdouble, (Csize_t, Ptr{Cdouble}, Ptr{Cvoid}))
     log_callback = @cfunction(c_log, Cvoid, (Cstring, Ptr{Cvoid}))
 

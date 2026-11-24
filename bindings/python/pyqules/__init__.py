@@ -1,4 +1,4 @@
-"""Python binding for the QULES optimizer (Windows x64 native bundle).
+"""Python binding for the QULES optimizer (bundled native library).
 
 Uses only ctypes. `load` starts Julia once per process; it is shut down at
 interpreter exit. See README.md for usage.
@@ -16,7 +16,7 @@ from . import _native
 
 __all__ = ["load", "optimize", "Session", "Result", "QulesError", "version"]
 
-__version__ = "0.1.0"
+__version__ = "0.1.6"
 
 Objective = Callable[[List[float]], float]
 LogSink = Callable[[str], None]
@@ -46,12 +46,11 @@ class Result:
 
 
 def load(bundle_dir: Union[str, os.PathLike, None] = None) -> None:
-    """Load the native bundle and initialize Julia. Must precede every other call.
+    """Load the native bundle and initialize Julia.
 
-    `bundle_dir` is the directory containing `bin/qules.dll`; when omitted the
-    `QULES_BUNDLE` environment variable is used. Loading is idempotent for the
-    same directory. Julia cannot be re-initialized, so only one bundle can be
-    loaded per process and it is never unloaded before interpreter exit.
+    Optional: `optimize` and `Session` load the bundle shipped with the package
+    on first use. Pass `bundle_dir` (or set `QULES_BUNDLE`) to use another
+    bundle. Only one bundle can be loaded per process.
     """
     _native.load(bundle_dir)
 
@@ -132,7 +131,7 @@ def optimize(f: Objective, x0: Sequence[float], *, max_evals: int = 300, delta0:
 class Session:
     """Ask/tell driver for the same algorithm as `optimize()`.
 
-        with qules.Session(x0, max_evals=40) as s:
+        with pyqules.Session(x0, max_evals=40) as s:
             while (x := s.ask()) is not None:
                 s.tell(f(x))
             result = s.best()

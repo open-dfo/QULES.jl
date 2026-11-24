@@ -92,22 +92,12 @@ result = optimize_qules(
 )
 ```
 
-## Other languages
-
-QULES can be compiled into a native Windows x64 library and called from C, C++,
-Python and MATLAB. Build the library bundle from the repository root:
+## Python
 
 ```sh
-julia --startup-file=no --project=build build/build_library.jl
+pip install pyqules
 ```
 
-This writes `build/libqules/`; pass that directory to the binding. Each binding
-has its own README:
-
-| Language | Directory |
-| --- | --- |
-| C | [`bindings/c`](bindings/c) |
-| C++ | [`bindings/cpp`](bindings/cpp) |
-| Python | [`bindings/python`](bindings/python) |
-| MATLAB | [`bindings/matlab`](bindings/matlab) |
+Runs on Windows, Linux and macOS without a Julia installation. Usage examples,
+options and requirements: [`bindings/python`](bindings/python).
 
