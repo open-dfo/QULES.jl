@@ -1,8 +1,7 @@
 name: Wheels
 
+# Started by hand (Actions page or `gh workflow run wheels.yml`); a full run takes ~90 min.
 on:
-  push:
-    branches: [multiplatform]
   workflow_dispatch:
     inputs:
       wheels-from-run:
