@@ -1,0 +1,92 @@
+name: MATLAB probe
+
+# Step 1 of the MATLAB port: can MATLAB on Linux and macOS load the QULES
+# bundle (taken from the pyqules 0.1.7 wheel) and run the +qules tests?
+# Each variant runs in its own MATLAB process, so a crash in one does not
+# hide the others.
+on:
+  workflow_dispatch:
+  push:
+    branches: [multiplatform]
+    paths:
+      - .github/workflows/matlab-probe.yml
+      - .github/scripts/matlab_probe.*
+
+jobs:
+  probe:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-x86_64, os: ubuntu-24.04 }
+          - { platform: macos-arm64, os: macos-15 }
+          - { platform: macos-x86_64, os: macos-15-intel }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Bundle from the pyqules wheel
+        run: |
+          python -m pip install --no-deps --target "$RUNNER_TEMP/pq" pyqules==0.1.7
+          bundle="$RUNNER_TEMP/pq/pyqules/_bundle"
+          PYTHONPATH="$RUNNER_TEMP/pq" python -c \
+            "import sys; from pyqules import _native; _native.restore_symlinks(sys.argv[1])" "$bundle"
+          ls -la "$bundle/lib" | head -20
+          echo "QULES_BUNDLE=$bundle" >> "$GITHUB_ENV"
+
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2025a
+
+      - name: Default
+        id: default
+        continue-on-error: true
+        uses: matlab-actions/run-command@v2
+        with:
+          command: addpath('.github/scripts'); matlab_probe(getenv('QULES_BUNDLE'), true)
+
+      - name: Julia without signal handlers
+        id: nosignals
+        continue-on-error: true
+        uses: matlab-actions/run-command@v2
+        with:
+          command: addpath('.github/scripts'); matlab_probe(getenv('QULES_BUNDLE'), false)
+
+      - name: MATLAB without JVM
+        id: nojvm
+        continue-on-error: true
+        uses: matlab-actions/run-command@v2
+        with:
+          command: addpath('.github/scripts'); matlab_probe(getenv('QULES_BUNDLE'), true)
+          startup-options: -nojvm
+
+      - name: Crash dumps
+        if: always()
+        run: |
+          for f in "$HOME"/matlab_crash_dump.*; do
+            [ -e "$f" ] || continue
+            echo "=== $f"; head -n 120 "$f"
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### ${{ matrix.platform }}"
+            echo "| Variant | Outcome |"
+            echo "|---|---|"
+            echo "| Default | ${{ steps.default.outcome }} |"
+            echo "| --handle-signals=no | ${{ steps.nosignals.outcome }} |"
+            echo "| -nojvm | ${{ steps.nojvm.outcome }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "${{ steps.default.outcome }}" = success ] || [ "${{ steps.nosignals.outcome }}" = success ] \
+            || [ "${{ steps.nojvm.outcome }}" = success ]
