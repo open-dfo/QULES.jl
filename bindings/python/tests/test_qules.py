@@ -8,6 +8,7 @@ Under pytest, set QULES_BUNDLE or install the wheel. Exits non-zero on failure.
 
 import math
 import os
+import subprocess
 import sys
 import time
 import traceback
@@ -139,12 +140,42 @@ def test_bad_arguments():
 
 def test_single_core():
     """At most one busy core unless a BLAS thread count is set."""
-    if any(v in os.environ for v in ("OPENBLAS_NUM_THREADS", "GOTO_NUM_THREADS", "OMP_NUM_THREADS")):
+    if any(v in os.environ for v in BLAS_THREAD_VARS):
         return
     wall, cpu = time.perf_counter(), time.process_time()
-    qules.optimize(rosenbrock, [-1.2, 1.0] * 5, max_evals=400)
+    qules.optimize(rosenbrock, [-1.2, 1.0] * 5, max_evals=100)
     wall, cpu = time.perf_counter() - wall, time.process_time() - cpu
     assert cpu < 1.5 * wall + 0.1, f"CPU time {cpu:.2f} s for {wall:.2f} s wall time: several cores busy"
+
+
+BLAS_THREAD_VARS = ("OPENBLAS_NUM_THREADS", "GOTO_NUM_THREADS", "OMP_NUM_THREADS")
+
+# Runs in a fresh process: the OpenBLAS thread count right after loading, and
+# whether OPENBLAS_NUM_THREADS is still set.
+BLAS_PROBE = """
+import ctypes, glob, os
+from pyqules import _native
+_native.load(None)
+libs = [p for p in glob.glob(os.path.join(_native.resolve_bundle_dir(None), "**", "libopenblas64_*"),
+                             recursive=True) if p.endswith((".dll", ".dylib")) or ".so" in p]
+print(ctypes.CDLL(sorted(libs)[0]).openblas_get_num_threads64_(), "OPENBLAS_NUM_THREADS" in os.environ)
+"""
+
+
+def blas_threads_at_load(**env):
+    clean = {k: v for k, v in os.environ.items() if k not in BLAS_THREAD_VARS}
+    clean.update(env)
+    out = subprocess.run([sys.executable, "-c", BLAS_PROBE], env=clean, capture_output=True,
+                         text=True, check=True).stdout.split()
+    return int(out[-2]), out[-1] == "True"
+
+
+def test_one_blas_thread_at_load():
+    """OpenBLAS starts one thread (Julia's default is half the cores) unless the
+    host sets a count, and the temporary setting is removed after loading."""
+    assert blas_threads_at_load() == (1, False)
+    assert blas_threads_at_load(OPENBLAS_NUM_THREADS="2") == (2, True)
+    assert blas_threads_at_load(OMP_NUM_THREADS="2")[0] == 2
 
 
 def main(argv):

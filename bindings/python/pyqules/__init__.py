@@ -16,7 +16,7 @@ from . import _native
 
 __all__ = ["load", "optimize", "Session", "Result", "QulesError", "version"]
 
-__version__ = "0.1.6"
+__version__ = "0.1.7"
 
 Objective = Callable[[List[float]], float]
 LogSink = Callable[[str], None]
