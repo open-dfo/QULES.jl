@@ -1,9 +1,8 @@
 name: MATLAB probe
 
-# Step 1 of the MATLAB port: can MATLAB on Linux and macOS load the QULES
-# bundle (taken from the pyqules 0.1.7 wheel) and run the +qules tests?
-# Each variant runs in its own MATLAB process, so a crash in one does not
-# hide the others.
+# MATLAB port: load the QULES bundle (taken from the pyqules 0.1.7 wheel) into
+# MATLAB on every platform and run bindings/matlab/tests (test_qules and
+# test_stress), then check the package still works after `clear all`.
 on:
   workflow_dispatch:
   push:
@@ -11,6 +10,7 @@ on:
     paths:
       - .github/workflows/matlab-probe.yml
       - .github/scripts/matlab_probe.*
+      - bindings/matlab/**
 
 jobs:
   probe:
@@ -24,6 +24,7 @@ jobs:
           - { platform: linux-x86_64, os: ubuntu-24.04 }
           - { platform: macos-arm64, os: macos-15 }
           - { platform: macos-x86_64, os: macos-15-intel }
+          - { platform: windows-x86_64, os: windows-2022 }
     defaults:
       run:
         shell: bash
@@ -40,34 +41,21 @@ jobs:
           bundle="$RUNNER_TEMP/pq/pyqules/_bundle"
           PYTHONPATH="$RUNNER_TEMP/pq" python -c \
             "import sys; from pyqules import _native; _native.restore_symlinks(sys.argv[1])" "$bundle"
-          ls -la "$bundle/lib" | head -20
           echo "QULES_BUNDLE=$bundle" >> "$GITHUB_ENV"
 
       - uses: matlab-actions/setup-matlab@v2
         with:
           release: R2025a
 
-      - name: Default
-        id: default
-        continue-on-error: true
+      - name: Tests
         uses: matlab-actions/run-command@v2
         with:
-          command: addpath('.github/scripts'); matlab_probe(getenv('QULES_BUNDLE'), true)
-
-      - name: Julia without signal handlers
-        id: nosignals
-        continue-on-error: true
-        uses: matlab-actions/run-command@v2
-        with:
-          command: addpath('.github/scripts'); matlab_probe(getenv('QULES_BUNDLE'), false)
-
-      - name: MATLAB without JVM
-        id: nojvm
-        continue-on-error: true
-        uses: matlab-actions/run-command@v2
-        with:
-          command: addpath('.github/scripts'); matlab_probe(getenv('QULES_BUNDLE'), true)
-          startup-options: -nojvm
+          command: >-
+            addpath('.github/scripts'); matlab_probe(getenv('QULES_BUNDLE'));
+            clear all;
+            r = qules.optimize(@(x) (x(1) - 1)^2 + 10 * (x(2) + 2)^2, [3; 1], 'max_evals', 40);
+            assert(r.f_best < 1e-12, 'after clear all: f_best = %g', r.f_best);
+            disp('PASS  clear all: optimizer still works')
 
       - name: Crash dumps
         if: always()
@@ -76,17 +64,3 @@ jobs:
             [ -e "$f" ] || continue
             echo "=== $f"; head -n 120 "$f"
           done
-
-      - name: Summary
-        if: always()
-        run: |
-          {
-            echo "### ${{ matrix.platform }}"
-            echo "| Variant | Outcome |"
-            echo "|---|---|"
-            echo "| Default | ${{ steps.default.outcome }} |"
-            echo "| --handle-signals=no | ${{ steps.nosignals.outcome }} |"
-            echo "| -nojvm | ${{ steps.nojvm.outcome }} |"
-          } >> "$GITHUB_STEP_SUMMARY"
-          [ "${{ steps.default.outcome }}" = success ] || [ "${{ steps.nosignals.outcome }}" = success ] \
-            || [ "${{ steps.nojvm.outcome }}" = success ]
