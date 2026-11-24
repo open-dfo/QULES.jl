@@ -41,8 +41,23 @@ setenv('PATH', [bin_dir pathsep getenv('PATH')]);
 loadlibrary(dll, @qules_proto, 'alias', 'qules');
 
 if ~initialized
+    % Julia otherwise starts half the cores' worth of idle OpenBLAS threads
+    % (64 on a 128-core node). A count set by the user is respected.
+    blas_vars = {'OPENBLAS_NUM_THREADS', 'GOTO_NUM_THREADS', 'OMP_NUM_THREADS'};
+    if all(cellfun(@(name) isempty(getenv(name)), blas_vars))
+        setenv('OPENBLAS_NUM_THREADS', '1');
+        restore = onCleanup(@() remove_env('OPENBLAS_NUM_THREADS')); %#ok<NASGU>
+    end
     % argc = 0, argv = NULL. Exactly once per process; never shut down.
     calllib('qules', 'init_julia', int32(0), libpointer);
     initialized = true;
+end
+end
+
+function remove_env(name)
+try
+    unsetenv(name);       % R2022b and later
+catch
+    setenv(name, '');     % removes the variable on Windows
 end
 end
