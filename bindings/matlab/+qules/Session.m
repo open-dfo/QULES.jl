@@ -143,7 +143,8 @@ classdef Session < handle
         end
 
         function release(obj)
-            if obj.id > 0 && libisloaded('qules')
+            % Julia is gone once qules.load's exit guard has run.
+            if obj.id > 0 && libisloaded('qules') && isempty(getenv('QULES_JULIA_STOPPED'))
                 calllib('qules', 'qules_session_free', obj.id);
             end
             obj.id = int64(0);

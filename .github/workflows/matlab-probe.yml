@@ -116,6 +116,24 @@ jobs:
             assert(r.f_best < 1e-12, 'after clear all: f_best = %g', r.f_best);
             disp('PASS  clear all: optimizer still works')
 
+      # Julia used to crash now and then while MATLAB quit. Each session leaves
+      # a live Session object behind and must exit with status 0.
+      - name: Exit cleanly in 10 fresh MATLAB sessions
+        run: |
+          matlab_batch=matlab-batch
+          command -v matlab-batch >/dev/null || matlab_batch="matlab -batch"
+          failures=0
+          for i in $(seq 10); do
+            if $matlab_batch "addpath(getenv('QULES_TOOLBOX')); setenv('QULES_BUNDLE', ''); qules.load(); s = qules.Session([3; 1], 'max_evals', 20); s.tell(sum(s.ask().^2)); r = qules.optimize(@(x) sum(x.^2), [3; 1], 'max_evals', 30); assert(r.f_best < 1e-12)" > "exit-$i.log" 2>&1; then
+              echo "session $i: exit 0"
+            else
+              status=$?; failures=$((failures + 1))
+              echo "session $i: exit $status"; tail -n 20 "exit-$i.log"
+            fi
+          done
+          echo "$failures of 10 sessions failed"
+          [[ $failures == 0 ]]
+
       - uses: actions/upload-artifact@v4
         with:
           name: qules-matlab-${{ matrix.platform }}

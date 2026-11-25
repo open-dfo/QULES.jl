@@ -11,7 +11,7 @@ function load(bundle_dir)
 %
 %   See also QULES.INSTALL_BUNDLE, QULES.OPTIMIZE, QULES.SESSION, QULES.VERSION.
 
-persistent initialized
+persistent initialized shutdown_guard %#ok<PUSE>
 if isempty(initialized)
     initialized = false;
 end
@@ -76,6 +76,18 @@ if ~initialized
     % Initialize Julia exactly once per process.
     calllib('qules', 'init_julia', init_argc, init_argv);
     initialized = true;
+    % Julia must be shut down before the process exits, or it can crash
+    % while MATLAB quits. The lock keeps the guard through clear all, so it
+    % fires only when MATLAB exits.
+    mlock
+    shutdown_guard = onCleanup(@shutdown_julia);
+end
+end
+
+function shutdown_julia()
+setenv('QULES_JULIA_STOPPED', '1');   % read by Session.release
+if libisloaded('qules')
+    calllib('qules', 'shutdown_julia', int32(0));
 end
 end
 

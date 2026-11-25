@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 void init_julia(int argc, char *argv[]);
+void shutdown_julia(int retcode);
 int qules_version_major(void);
 int qules_version_minor(void);
 int qules_version_patch(void);
