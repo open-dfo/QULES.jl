@@ -1,12 +1,12 @@
-function matlab_toolbox_test(toolbox_file)
-%MATLAB_TOOLBOX_TEST Install the .mltbx and run the tests through qules.load().
+function matlab_toolbox_test()
+%MATLAB_TOOLBOX_TEST Run the tests through the installed toolbox's qules.load().
 
 fprintf('MATLAB %s | %s\n', version, computer('arch'));
 repo = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setenv('QULES_BUNDLE', '');   % qules.load() must find the installed bundle
-matlab.addons.install(toolbox_file, true);
 installed = fileparts(fileparts(which('qules.load')));
-assert(~startsWith(installed, repo), 'qules.load resolves to the repository: %s', installed);
+assert(~isempty(installed) && ~startsWith(installed, repo), ...
+    'qules.load does not resolve to the installed toolbox: "%s"', installed);
 fprintf('Installed in %s\n', installed);
 addpath(fullfile(repo, 'bindings', 'matlab', 'tests'));
 
