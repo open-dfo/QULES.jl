@@ -1,24 +1,25 @@
-function matlab_package_prototype(bundle_dir)
-%MATLAB_PACKAGE_PROTOTYPE Generate the Unix prototype and thunk for release.
+function matlab_package_prototype(bundle_dir, out_dir)
+%MATLAB_PACKAGE_PROTOTYPE Generate this platform's Unix prototype and thunk.
+%   Writes qules_proto_<arch>.m and its compiled thunk to OUT_DIR.
 
 here = fileparts(mfilename('fullpath'));
-private_dir = fullfile(fileparts(bundle_dir), '+qules', 'private');
 if ismac
     filename = 'libqules.dylib';
 else
     filename = 'libqules.so';
 end
 lib = fullfile(bundle_dir, 'lib', filename);
+proto_name = ['qules_proto_' computer('arch')];
 old_dir = pwd;
 restore_dir = onCleanup(@() cd(old_dir)); %#ok<NASGU>
-cd(private_dir);
+cd(out_dir);
 [missing, warnings] = loadlibrary(lib, fullfile(here, 'matlab_probe.h'), ...
-    'alias', 'qules_prototype_build', 'mfilename', 'qules_unix_proto');
+    'alias', 'qules_prototype_build', 'mfilename', proto_name);
 disp(warnings);
 assert(isempty(missing), 'Missing library functions: %s', strjoin(missing, ', '));
 
-% Keep the generated prototype relocatable when the package is extracted.
-proto = 'qules_unix_proto.m';
+% Keep the generated prototype relocatable when the package is installed.
+proto = [proto_name '.m'];
 contents = fileread(proto);
 thunk = [dir('*_thunk_*.so'); dir('*_thunk_*.dylib')];
 if contains(contents, '''Thunk''')
@@ -29,4 +30,6 @@ if contains(contents, '''Thunk''')
     writelines(regexprep(contents, pattern, assignment), proto);
 end
 delete('*_thunk_*.c');
+delete('*.exp');
+delete('*.lib');
 end

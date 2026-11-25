@@ -4,11 +4,12 @@ function load(bundle_dir)
 %   starts Julia. On Linux and macOS the MATLAB package must include the
 %   prototype and thunk generated for the current platform.
 %   QULES.LOAD() reads BUNDLE_DIR from the QULES_BUNDLE environment variable
-%   and otherwise uses the libqules folder installed with the toolbox.
+%   and otherwise uses the bundle installed by QULES.INSTALL_BUNDLE, which it
+%   downloads on first use.
 %   Further calls return immediately. Never call unloadlibrary('qules'):
 %   Julia cannot be restarted in the same process.
 %
-%   See also QULES.OPTIMIZE, QULES.SESSION, QULES.VERSION.
+%   See also QULES.INSTALL_BUNDLE, QULES.OPTIMIZE, QULES.SESSION, QULES.VERSION.
 
 persistent initialized
 if isempty(initialized)
@@ -22,11 +23,7 @@ end
 if nargin < 1 || isempty(bundle_dir)
     bundle_dir = getenv('QULES_BUNDLE');
     if isempty(bundle_dir)
-        bundle_dir = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'libqules');
-        if ~isfolder(bundle_dir)
-            error('qules:load', ['qules.load requires the bundle directory as an ' ...
-                'argument or in the QULES_BUNDLE environment variable.']);
-        end
+        bundle_dir = qules.install_bundle();
     end
 end
 if ~(ischar(bundle_dir) || (isstring(bundle_dir) && isscalar(bundle_dir)))
@@ -47,11 +44,13 @@ switch computer('arch')
         end
         lib = fullfile(bundle_dir, 'lib', filename);
         if ~isfile(fullfile(fileparts(mfilename('fullpath')), ...
-                'private', 'qules_unix_proto.m'))
-            error('qules:load', 'Use the QULES MATLAB package built for %s.', computer('arch'));
+                'private', ['qules_proto_' computer('arch') '.m']))
+            error('qules:load', 'This QULES MATLAB package does not support %s.', computer('arch'));
         end
         restore_symlinks(bundle_dir);
-        proto = @qules_unix_proto;
+        protos = struct('glnxa64', @qules_proto_glnxa64, ...
+            'maci64', @qules_proto_maci64, 'maca64', @qules_proto_maca64);
+        proto = protos.(computer('arch'));
         init_argc = int32(1);
         init_argv = libpointer('stringPtrPtr', {'qules'});
     otherwise

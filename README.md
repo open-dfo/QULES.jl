@@ -103,8 +103,9 @@ options and requirements: [`bindings/python`](bindings/python).
 
 ## MATLAB
 
-Download the `.mltbx` toolbox for your platform from the
+Download `QULES.mltbx` from the
 [releases page](https://github.com/open-dfo/QULES.jl/releases) and open it in
-MATLAB. Runs on Windows, Linux and macOS without a Julia installation. Usage
+MATLAB. The first `qules.load()` downloads the native library for your
+platform. Runs on Windows, Linux and macOS without a Julia installation. Usage
 examples and options: [`bindings/matlab`](bindings/matlab).
 
