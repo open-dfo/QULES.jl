@@ -5,12 +5,14 @@ name: MATLAB packages
 #   bundles: per platform, repackage the pyqules native bundle as a zip,
 #            generate the MATLAB thunk (Linux, macOS) and test the loader.
 #   toolbox: assemble and package QULES.mltbx, install it and test it.
-#   release: on a matlab-v* tag, publish the toolbox and the archives.
+#   release: on a version tag such as 0.1.7 (no "v", which the Julia package's
+#            tags use; File Exchange reads the tag as the version), publish
+#            the toolbox and the archives.
 on:
   workflow_dispatch:
   push:
     branches: [multiplatform]
-    tags: ["matlab-v*"]   # path filters are not evaluated for tags
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]   # path filters are not evaluated for tags
     paths:
       - .github/workflows/matlab-probe.yml
       - .github/scripts/matlab_*
@@ -187,7 +189,7 @@ jobs:
 
   release:
     needs: toolbox
-    if: startsWith(github.ref, 'refs/tags/matlab-v')
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -202,8 +204,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
+          # qules.install_bundle downloads from the tag named by QULES_RELEASE.
+          [[ "$TAG" == "$QULES_RELEASE" ]] || { echo "tag $TAG != QULES_RELEASE $QULES_RELEASE"; exit 1; }
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
-            --title "QULES for MATLAB ${TAG#matlab-v}" \
+            --title "QULES for MATLAB $TAG" \
             --notes "Install QULES.mltbx on any platform. The first call to qules.load() downloads the native library for that platform from this release." \
             QULES.mltbx qules-bundle-*.zip
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false

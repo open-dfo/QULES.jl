@@ -39,7 +39,7 @@ if nargin < 1 || isempty(archive)
             'release bundle. Pass a bundle directory to qules.load.']);
     end
     url = sprintf(['https://github.com/open-dfo/QULES.jl/releases/download/' ...
-        'matlab-v%s/qules-bundle-%s.zip'], manifest.version, platform);
+        '%s/qules-bundle-%s.zip'], manifest.version, platform);
     archive = [tempname '.zip'];
     remove_archive = onCleanup(@() delete_file(archive)); %#ok<NASGU>
     fprintf('Downloading the QULES library for %s (first use only)...\n', platform);
