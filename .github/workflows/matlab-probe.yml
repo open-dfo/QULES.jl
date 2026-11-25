@@ -39,9 +39,13 @@ jobs:
         env:
           QULES_RELEASE: "0.1.7"
         run: |
-          package="$RUNNER_TEMP/qules-matlab"
+          runner_temp="$RUNNER_TEMP"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            runner_temp=$(cygpath -m "$runner_temp")
+          fi
+          package="$runner_temp/qules-matlab"
           bundle="$package/libqules"
-          downloads="$RUNNER_TEMP/qules-wheel"
+          downloads="$runner_temp/qules-wheel"
           mkdir -p "$package" "$downloads"
           cp -R bindings/matlab/+qules "$package/"
           cp bindings/matlab/README.md "$package/"
@@ -50,6 +54,7 @@ jobs:
           fi
           python -m pip download --no-deps --only-binary=:all: --dest "$downloads" "pyqules==$QULES_RELEASE"
           python - "$downloads" "$bundle" <<'PY'
+          import os
           import shutil
           import sys
           from pathlib import Path
@@ -59,13 +64,17 @@ jobs:
           wheel, = downloads.glob("*.whl")
           prefix = "pyqules/_bundle/"
           with ZipFile(wheel) as archive:
-              for name in archive.namelist():
+              for entry in archive.infolist():
+                  name = entry.filename
                   if not name.startswith(prefix) or name.endswith("/"):
                       continue
                   destination = bundle / name.removeprefix(prefix)
                   destination.parent.mkdir(parents=True, exist_ok=True)
-                  with archive.open(name) as source, destination.open("wb") as output:
+                  with archive.open(entry) as source, destination.open("wb") as output:
                       shutil.copyfileobj(source, output)
+                  mode = (entry.external_attr >> 16) & 0o777
+                  if os.name != "nt" and mode:
+                      destination.chmod(mode)
           manifest = bundle / "symlinks.txt"
           if manifest.is_file():
               for line in manifest.read_text(encoding="utf-8").splitlines():
@@ -87,11 +96,11 @@ jobs:
 
       - name: Archive and extract the MATLAB package
         run: |
-          archive="qules-matlab-${{ matrix.platform }}.tar.gz"
-          test_dir="$RUNNER_TEMP/qules-matlab-test"
-          tar -czf "$archive" -C "$QULES_MATLAB_PACKAGE" .
+          archive="$PWD/qules-matlab-${{ matrix.platform }}.tar.gz"
+          test_dir="${QULES_MATLAB_PACKAGE}-test"
+          (cd "$QULES_MATLAB_PACKAGE" && tar -czf "$archive" .)
           mkdir -p "$test_dir"
-          tar -xzf "$archive" -C "$test_dir"
+          (cd "$test_dir" && tar -xzf "$archive")
           echo "QULES_BUNDLE=$test_dir/libqules" >> "$GITHUB_ENV"
 
       - name: Tests
