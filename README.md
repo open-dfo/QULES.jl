@@ -103,9 +103,16 @@ options and requirements: [`bindings/python`](bindings/python).
 
 ## MATLAB
 
-Download `QULES.mltbx` from the
-[releases page](https://github.com/open-dfo/QULES.jl/releases) and open it in
-MATLAB. The first `qules.load()` downloads the native library for your
-platform. Runs on Windows, Linux and macOS without a Julia installation. Usage
-examples and options: [`bindings/matlab`](bindings/matlab).
+In MATLAB R2025a or later, open **Home → Add-Ons → Get Add-Ons**, search for
+**QULES** and click **Add**
+([File Exchange page](https://www.mathworks.com/matlabcentral/fileexchange/185309-qules)).
+Then:
+
+```matlab
+qules.load();   % first call downloads the native library for your platform
+r = qules.optimize(@(x) (x(1) - 1)^2 + 10 * (x(2) + 2)^2, [3; 1], 'max_evals', 150);
+```
+
+Runs on Windows, Linux and macOS without a Julia installation. Usage examples,
+options and offline installation: [`bindings/matlab`](bindings/matlab).
 

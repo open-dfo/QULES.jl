@@ -1,16 +1,18 @@
 # QULES for MATLAB
 
-The `QULES.mltbx` toolbox runs on MATLAB R2025a or later on Windows x64, Linux
-x86-64, and macOS (Intel or Apple silicon). No Julia installation or C
-compiler is needed.
+The QULES toolbox runs on MATLAB R2025a or later on Windows x64, Linux x86-64,
+and macOS (Intel or Apple silicon). No Julia installation or C compiler is
+needed.
 
 ## Installation and usage
 
-1. Download `QULES.mltbx` from the
-   [latest MATLAB release](https://github.com/open-dfo/QULES.jl/releases).
-2. Open the file in MATLAB (double-click it, or run
-   `matlab.addons.install('QULES.mltbx')`).
-3. Load QULES once per session and optimize:
+1. In MATLAB, open **Home → Add-Ons → Get Add-Ons**, search for **QULES** and
+   click **Add**. The toolbox is also on
+   [File Exchange](https://www.mathworks.com/matlabcentral/fileexchange/185309-qules).
+   Alternatively, download `QULES.mltbx` from the
+   [latest release](https://github.com/open-dfo/QULES.jl/releases/latest) and
+   open it in MATLAB.
+2. Load QULES once per session and optimize:
 
 ```matlab
 qules.load();
@@ -21,13 +23,14 @@ r.x_best, r.f_best, r.evals
 ```
 
 The first `qules.load()` downloads the QULES native library for your platform
-(about 80 MB) from the same release, checks its SHA-256 and installs it in
+(about 80 MB) from the project's GitHub release, checks its SHA-256 and installs it in
 `%LOCALAPPDATA%\qules\matlab` on Windows or `~/.qules/matlab` on Linux and
 macOS. Later sessions use the installed copy. Set `verbose` to `true` to print
 the iteration table and termination summary.
 
 Without internet access, download `qules-bundle-<platform>.zip` from the
-release elsewhere and install it with `qules.install_bundle('qules-bundle-<platform>.zip')`.
+[release](https://github.com/open-dfo/QULES.jl/releases/latest) on another
+machine and install it with `qules.install_bundle('qules-bundle-<platform>.zip')`.
 On a cluster with a shared home directory, one `qules.load()` on a login node
 installs the library for the compute nodes. To use another bundle, pass its
 directory to `qules.load` or set the `QULES_BUNDLE` environment variable.
