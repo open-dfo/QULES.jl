@@ -1,4 +1,4 @@
-/* Declarations for loadlibrary in matlab_probe.m: the functions the +qules
+/* Declarations for the MATLAB package generator: the functions the +qules
  * package calls, as in build/qules.h, with the log callback as void * and the
  * log buffer as unsigned char * (uint8Ptr), matching +qules/private/qules_proto.m. */
 #include <stddef.h>

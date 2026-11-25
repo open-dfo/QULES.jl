@@ -1,8 +1,7 @@
-name: MATLAB probe
+name: MATLAB packages
 
-# MATLAB port: load the QULES bundle (taken from the pyqules 0.1.7 wheel) into
-# MATLAB on every platform and run bindings/matlab/tests (test_qules and
-# test_stress), then check the package still works after `clear all`.
+# Package the existing QULES native bundles with the MATLAB loader, then test
+# the staged packages in fresh MATLAB processes.
 on:
   workflow_dispatch:
   push:
@@ -10,6 +9,7 @@ on:
     paths:
       - .github/workflows/matlab-probe.yml
       - .github/scripts/matlab_probe.*
+      - .github/scripts/matlab_package_prototype.m
       - bindings/matlab/**
 
 jobs:
@@ -35,17 +35,64 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Bundle from the pyqules wheel
+      - name: Stage the existing native bundle and MATLAB files
+        env:
+          QULES_RELEASE: "0.1.7"
         run: |
-          python -m pip install --no-deps --target "$RUNNER_TEMP/pq" pyqules==0.1.7
-          bundle="$RUNNER_TEMP/pq/pyqules/_bundle"
-          PYTHONPATH="$RUNNER_TEMP/pq" python -c \
-            "import sys; from pyqules import _native; _native.restore_symlinks(sys.argv[1])" "$bundle"
+          package="$RUNNER_TEMP/qules-matlab"
+          bundle="$package/libqules"
+          downloads="$RUNNER_TEMP/qules-wheel"
+          mkdir -p "$package" "$downloads"
+          cp -R bindings/matlab/+qules "$package/"
+          cp bindings/matlab/README.md "$package/"
+          if [[ "$RUNNER_OS" != Windows ]]; then
+            rm "$package/+qules/private/qules_thunk_pcwin64.dll" "$package/+qules/private/qules_proto.m"
+          fi
+          python -m pip download --no-deps --only-binary=:all: --dest "$downloads" "pyqules==$QULES_RELEASE"
+          python - "$downloads" "$bundle" <<'PY'
+          import shutil
+          import sys
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          downloads, bundle = map(Path, sys.argv[1:])
+          wheel, = downloads.glob("*.whl")
+          prefix = "pyqules/_bundle/"
+          with ZipFile(wheel) as archive:
+              for name in archive.namelist():
+                  if not name.startswith(prefix) or name.endswith("/"):
+                      continue
+                  destination = bundle / name.removeprefix(prefix)
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  with archive.open(name) as source, destination.open("wb") as output:
+                      shutil.copyfileobj(source, output)
+          manifest = bundle / "symlinks.txt"
+          if manifest.is_file():
+              for line in manifest.read_text(encoding="utf-8").splitlines():
+                  link, target = line.split("\t")
+                  (bundle / link).symlink_to(target)
+          PY
+          echo "QULES_MATLAB_PACKAGE=$package" >> "$GITHUB_ENV"
           echo "QULES_BUNDLE=$bundle" >> "$GITHUB_ENV"
 
       - uses: matlab-actions/setup-matlab@v2
         with:
           release: R2025a
+
+      - name: Generate the MATLAB prototype and thunk
+        if: runner.os != 'Windows'
+        uses: matlab-actions/run-command@v2
+        with:
+          command: addpath('.github/scripts'); matlab_package_prototype(getenv('QULES_BUNDLE'));
+
+      - name: Archive and extract the MATLAB package
+        run: |
+          archive="qules-matlab-${{ matrix.platform }}.tar.gz"
+          test_dir="$RUNNER_TEMP/qules-matlab-test"
+          tar -czf "$archive" -C "$QULES_MATLAB_PACKAGE" .
+          mkdir -p "$test_dir"
+          tar -xzf "$archive" -C "$test_dir"
+          echo "QULES_BUNDLE=$test_dir/libqules" >> "$GITHUB_ENV"
 
       - name: Tests
         uses: matlab-actions/run-command@v2
@@ -56,6 +103,12 @@ jobs:
             r = qules.optimize(@(x) (x(1) - 1)^2 + 10 * (x(2) + 2)^2, [3; 1], 'max_evals', 40);
             assert(r.f_best < 1e-12, 'after clear all: f_best = %g', r.f_best);
             disp('PASS  clear all: optimizer still works')
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qules-matlab-${{ matrix.platform }}
+          path: qules-matlab-${{ matrix.platform }}.tar.gz
+          if-no-files-found: error
 
       - name: Crash dumps
         if: always()

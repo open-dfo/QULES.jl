@@ -1,6 +1,8 @@
 function load(bundle_dir)
 %LOAD Load the QULES native bundle (once per MATLAB session).
-%   QULES.LOAD(BUNDLE_DIR) loads BUNDLE_DIR/bin/qules.dll and starts Julia.
+%   QULES.LOAD(BUNDLE_DIR) loads the platform library from BUNDLE_DIR and
+%   starts Julia. On Linux and macOS the MATLAB package must include the
+%   prototype and thunk generated for the current platform.
 %   QULES.LOAD() reads BUNDLE_DIR from the QULES_BUNDLE environment variable.
 %   Further calls return immediately. Never call unloadlibrary('qules'):
 %   Julia cannot be restarted in the same process.
@@ -27,18 +29,37 @@ if ~(ischar(bundle_dir) || (isstring(bundle_dir) && isscalar(bundle_dir)))
     error('qules:load', 'The bundle directory must be a character vector or string.');
 end
 bundle_dir = char(bundle_dir);
-bin_dir = fullfile(bundle_dir, 'bin');
-dll = fullfile(bin_dir, 'qules.dll');
-if ~isfile(dll)
-    error('qules:load', 'qules.dll not found at "%s".', dll);
+switch computer('arch')
+    case 'win64'
+        lib = fullfile(bundle_dir, 'bin', 'qules.dll');
+        proto = @qules_proto;
+        init_argc = int32(0);
+        init_argv = libpointer;
+    case {'glnxa64', 'maci64', 'maca64'}
+        if ismac
+            filename = 'libqules.dylib';
+        else
+            filename = 'libqules.so';
+        end
+        lib = fullfile(bundle_dir, 'lib', filename);
+        if ~isfile(fullfile(fileparts(mfilename('fullpath')), ...
+                'private', 'qules_unix_proto.m'))
+            error('qules:load', 'Use the QULES MATLAB package built for %s.', computer('arch'));
+        end
+        proto = @qules_unix_proto;
+        init_argc = int32(1);
+        init_argv = libpointer('stringPtrPtr', {'qules'});
+    otherwise
+        error('qules:load', 'Unsupported MATLAB architecture: %s.', computer('arch'));
 end
-
-% Julia loads its dependent DLLs by name, so bin/ must be on PATH.
-setenv('PATH', [bin_dir pathsep getenv('PATH')]);
-
-% qules_proto lives in +qules/private; its ThunkLibName points at the thunk
-% DLL in the same folder, so no compiler is involved.
-loadlibrary(dll, @qules_proto, 'alias', 'qules');
+if ~isfile(lib)
+    error('qules:load', 'QULES library not found at "%s".', lib);
+end
+if ispc
+    % Julia loads its dependent DLLs by name, so bin/ must be on PATH.
+    setenv('PATH', [fileparts(lib) pathsep getenv('PATH')]);
+end
+loadlibrary(lib, proto, 'alias', 'qules');
 
 if ~initialized
     % Julia otherwise starts half the cores' worth of idle OpenBLAS threads
@@ -48,8 +69,8 @@ if ~initialized
         setenv('OPENBLAS_NUM_THREADS', '1');
         restore = onCleanup(@() remove_env('OPENBLAS_NUM_THREADS')); %#ok<NASGU>
     end
-    % argc = 0, argv = NULL. Exactly once per process; never shut down.
-    calllib('qules', 'init_julia', int32(0), libpointer);
+    % Initialize Julia exactly once per process.
+    calllib('qules', 'init_julia', init_argc, init_argv);
     initialized = true;
 end
 end

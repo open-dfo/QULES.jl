@@ -101,3 +101,9 @@ pip install pyqules
 Runs on Windows, Linux and macOS without a Julia installation. Usage examples,
 options and requirements: [`bindings/python`](bindings/python).
 
+## MATLAB
+
+Download the package for your platform from a successful
+[MATLAB packages workflow run](https://github.com/open-dfo/QULES.jl/actions/workflows/matlab-probe.yml).
+See the [MATLAB guide](bindings/matlab) for setup, examples and options.
+
