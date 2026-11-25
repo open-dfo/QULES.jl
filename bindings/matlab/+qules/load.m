@@ -3,7 +3,8 @@ function load(bundle_dir)
 %   QULES.LOAD(BUNDLE_DIR) loads the platform library from BUNDLE_DIR and
 %   starts Julia. On Linux and macOS the MATLAB package must include the
 %   prototype and thunk generated for the current platform.
-%   QULES.LOAD() reads BUNDLE_DIR from the QULES_BUNDLE environment variable.
+%   QULES.LOAD() reads BUNDLE_DIR from the QULES_BUNDLE environment variable
+%   and otherwise uses the libqules folder installed with the toolbox.
 %   Further calls return immediately. Never call unloadlibrary('qules'):
 %   Julia cannot be restarted in the same process.
 %
@@ -21,8 +22,11 @@ end
 if nargin < 1 || isempty(bundle_dir)
     bundle_dir = getenv('QULES_BUNDLE');
     if isempty(bundle_dir)
-        error('qules:load', ['qules.load requires the bundle directory as an ' ...
-            'argument or in the QULES_BUNDLE environment variable.']);
+        bundle_dir = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'libqules');
+        if ~isfolder(bundle_dir)
+            error('qules:load', ['qules.load requires the bundle directory as an ' ...
+                'argument or in the QULES_BUNDLE environment variable.']);
+        end
     end
 end
 if ~(ischar(bundle_dir) || (isstring(bundle_dir) && isscalar(bundle_dir)))
@@ -46,6 +50,7 @@ switch computer('arch')
                 'private', 'qules_unix_proto.m'))
             error('qules:load', 'Use the QULES MATLAB package built for %s.', computer('arch'));
         end
+        restore_symlinks(bundle_dir);
         proto = @qules_unix_proto;
         init_argc = int32(1);
         init_argv = libpointer('stringPtrPtr', {'qules'});
@@ -73,6 +78,36 @@ if ~initialized
     calllib('qules', 'init_julia', init_argc, init_argv);
     initialized = true;
 end
+end
+
+function restore_symlinks(bundle_dir)
+% Toolbox archives cannot hold symlinks, so each library is shipped once under
+% its real name and the links listed in symlinks.txt are recreated here.
+manifest = fullfile(bundle_dir, 'symlinks.txt');
+if ~isfile(manifest)
+    return
+end
+for line = readlines(manifest, 'EmptyLineRule', 'skip')'
+    parts = split(line, sprintf('\t'));
+    link = fullfile(bundle_dir, char(parts(1)));
+    if isfile(link) || isfolder(link) || is_link(link)
+        continue
+    end
+    [status, output] = system(sprintf('/bin/ln -s %s %s', ...
+        shell_quote(parts(2)), shell_quote(link)));
+    if status ~= 0 && ~is_link(link)  % a concurrent first load may have made it
+        error('qules:load', ['Cannot create "%s": %s\nInstall the QULES ' ...
+            'toolbox in a writable folder.'], link, strtrim(output));
+    end
+end
+end
+
+function tf = is_link(path)
+tf = system(sprintf('/bin/test -L %s', shell_quote(path))) == 0;
+end
+
+function quoted = shell_quote(text)
+quoted = ['''' strrep(char(text), '''', '''\''''') ''''];
 end
 
 function remove_env(name)

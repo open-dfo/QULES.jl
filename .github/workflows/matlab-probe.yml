@@ -1,16 +1,20 @@
 name: MATLAB packages
 
-# Package the existing QULES native bundles with the MATLAB loader, then test
-# the staged packages in fresh MATLAB processes.
+# Package the existing QULES native bundles with the MATLAB loader as one .mltbx
+# toolbox per platform, then install and test each toolbox in a fresh MATLAB
+# process. A matlab-v* tag attaches the toolboxes to its GitHub release.
 on:
   workflow_dispatch:
   push:
     branches: [multiplatform]
+    tags: ["matlab-v*"]   # path filters are not evaluated for tags
     paths:
       - .github/workflows/matlab-probe.yml
-      - .github/scripts/matlab_probe.*
-      - .github/scripts/matlab_package_prototype.m
+      - .github/scripts/matlab_*
       - bindings/matlab/**
+
+env:
+  QULES_RELEASE: "0.1.7"
 
 jobs:
   probe:
@@ -36,8 +40,6 @@ jobs:
           python-version: "3.11"
 
       - name: Stage the existing native bundle and MATLAB files
-        env:
-          QULES_RELEASE: "0.1.7"
         run: |
           runner_temp="$RUNNER_TEMP"
           if [[ "$RUNNER_OS" == Windows ]]; then
@@ -94,20 +96,19 @@ jobs:
         with:
           command: addpath('.github/scripts'); matlab_package_prototype(getenv('QULES_BUNDLE'));
 
-      - name: Archive and extract the MATLAB package
-        run: |
-          archive="$PWD/qules-matlab-${{ matrix.platform }}.tar.gz"
-          test_dir="${QULES_MATLAB_PACKAGE}-test"
-          (cd "$QULES_MATLAB_PACKAGE" && tar -czf "$archive" .)
-          mkdir -p "$test_dir"
-          (cd "$test_dir" && tar -xzf "$archive")
-          echo "QULES_BUNDLE=$test_dir/libqules" >> "$GITHUB_ENV"
-
-      - name: Tests
+      - name: Package the toolbox
         uses: matlab-actions/run-command@v2
         with:
           command: >-
-            addpath('.github/scripts'); matlab_probe(getenv('QULES_BUNDLE'));
+            addpath('.github/scripts');
+            matlab_package_toolbox(getenv('QULES_MATLAB_PACKAGE'),
+            fullfile(pwd, 'qules-matlab-${{ matrix.platform }}.mltbx'), getenv('QULES_RELEASE'));
+
+      - name: Install and test the toolbox
+        uses: matlab-actions/run-command@v2
+        with:
+          command: >-
+            addpath('.github/scripts'); matlab_toolbox_test(fullfile(pwd, 'qules-matlab-${{ matrix.platform }}.mltbx'));
             clear all;
             r = qules.optimize(@(x) (x(1) - 1)^2 + 10 * (x(2) + 2)^2, [3; 1], 'max_evals', 40);
             assert(r.f_best < 1e-12, 'after clear all: f_best = %g', r.f_best);
@@ -116,7 +117,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: qules-matlab-${{ matrix.platform }}
-          path: qules-matlab-${{ matrix.platform }}.tar.gz
+          path: qules-matlab-${{ matrix.platform }}.mltbx
+          compression-level: 0
           if-no-files-found: error
 
       - name: Crash dumps
@@ -126,3 +128,24 @@ jobs:
             [ -e "$f" ] || continue
             echo "=== $f"; head -n 120 "$f"
           done
+
+  release:
+    needs: probe
+    if: startsWith(github.ref, 'refs/tags/matlab-v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: qules-matlab-*
+          merge-multiple: true
+      - name: Attach the toolboxes to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "QULES for MATLAB ${TAG#matlab-v}" --notes "MATLAB toolboxes built from the pyqules $QULES_RELEASE native bundles."
+          gh release upload "$TAG" qules-matlab-*.mltbx --repo "$GITHUB_REPOSITORY" --clobber

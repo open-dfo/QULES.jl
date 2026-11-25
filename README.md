@@ -103,7 +103,8 @@ options and requirements: [`bindings/python`](bindings/python).
 
 ## MATLAB
 
-Download the package for your platform from a successful
-[MATLAB packages workflow run](https://github.com/open-dfo/QULES.jl/actions/workflows/matlab-probe.yml).
-See the [MATLAB guide](bindings/matlab) for setup, examples and options.
+Download the `.mltbx` toolbox for your platform from the
+[releases page](https://github.com/open-dfo/QULES.jl/releases) and open it in
+MATLAB. Runs on Windows, Linux and macOS without a Julia installation. Usage
+examples and options: [`bindings/matlab`](bindings/matlab).
 
