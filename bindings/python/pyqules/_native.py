@@ -22,6 +22,8 @@ BUNDLE_ENV = "QULES_BUNDLE"
 #: Bundle copied into the package by build_wheel.py.
 PACKAGED_BUNDLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_bundle")
 
+BLAS_THREAD_VARS = ("OPENBLAS_NUM_THREADS", "GOTO_NUM_THREADS", "OMP_NUM_THREADS")
+
 c_double_p = ctypes.POINTER(ctypes.c_double)
 
 #: ``double (*)(size_t n, const double *x, void *user_data)``
@@ -100,20 +102,27 @@ def load(bundle_dir: Optional[str]) -> ctypes.CDLL:
     if not os.path.isfile(lib_path):
         raise FileNotFoundError(f"{os.path.basename(lib_path)} not found in {bundle_dir}")
 
-    if sys.platform == "win32":
-        # Julia loads its dependents by name: make bin/ visible both to
-        # LoadLibrary (add_dll_directory) and to the Julia loader (PATH).
-        bin_dir = os.path.dirname(lib_path)
-        _dll_dir = os.add_dll_directory(bin_dir)
-        os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
-        lib = ctypes.CDLL(lib_path)
-    else:
-        restore_symlinks(bundle_dir)
-        # Dependents are found through the library's rpath.
-        lib = ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL)
-    _declare(lib)
-    _argv = (ctypes.c_char_p * 2)(b"qules", None)
-    lib.init_julia(1, _argv)
+    set_blas = not any(name in os.environ for name in BLAS_THREAD_VARS)
+    if set_blas:
+        os.environ["OPENBLAS_NUM_THREADS"] = "1"
+    try:
+        if sys.platform == "win32":
+            # Julia loads its dependents by name: make bin/ visible both to
+            # LoadLibrary (add_dll_directory) and to the Julia loader (PATH).
+            bin_dir = os.path.dirname(lib_path)
+            _dll_dir = os.add_dll_directory(bin_dir)
+            os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+            lib = ctypes.CDLL(lib_path)
+        else:
+            restore_symlinks(bundle_dir)
+            # Dependents are found through the library's rpath.
+            lib = ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL)
+        _declare(lib)
+        _argv = (ctypes.c_char_p * 2)(b"qules", None)
+        lib.init_julia(1, _argv)
+    finally:
+        if set_blas:
+            del os.environ["OPENBLAS_NUM_THREADS"]
     atexit.register(lib.shutdown_julia, 0)
     _lib = lib
     _bundle_dir = key

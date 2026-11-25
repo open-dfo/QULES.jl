@@ -1,0 +1,237 @@
+name: MATLAB packages
+
+# One platform-independent QULES.mltbx plus one native bundle archive per
+# platform. qules.load downloads the archive for its platform on first use.
+#   bundles: per platform, repackage the pyqules native bundle as a zip,
+#            generate the MATLAB thunk (Linux, macOS) and test the loader.
+#   toolbox: assemble and package QULES.mltbx, install it and test it.
+#   release: on a version tag such as 0.1.7 (no "v", which the Julia package's
+#            tags use; File Exchange reads the tag as the version), publish
+#            the toolbox and the archives.
+on:
+  workflow_dispatch:
+  push:
+    branches: [multiplatform]
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]   # path filters are not evaluated for tags
+    paths:
+      - .github/workflows/matlab-probe.yml
+      - .github/scripts/matlab_*
+      - bindings/matlab/**
+
+env:
+  QULES_RELEASE: "0.1.7"
+
+jobs:
+  bundles:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-x86_64, os: ubuntu-24.04 }
+          - { platform: macos-arm64, os: macos-15 }
+          - { platform: macos-x86_64, os: macos-15-intel }
+          - { platform: windows-x86_64, os: windows-2022 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Repackage the pyqules native bundle
+        run: |
+          runner_temp="$RUNNER_TEMP"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            runner_temp=$(cygpath -m "$runner_temp")
+          fi
+          bundle="$runner_temp/libqules"
+          downloads="$runner_temp/qules-wheel"
+          mkdir -p dist/parts "$downloads"
+          python -m pip download --no-deps --only-binary=:all: --dest "$downloads" "pyqules==$QULES_RELEASE"
+          python - "$downloads" "$bundle" "dist/qules-bundle-${{ matrix.platform }}.zip" <<'PY'
+          import shutil
+          import sys
+          from pathlib import Path
+          from zipfile import ZIP_DEFLATED, ZipFile
+
+          downloads, bundle, archive = map(Path, sys.argv[1:])
+          wheel, = downloads.glob("*.whl")
+          prefix = "pyqules/_bundle/"
+          # The archive keeps the wheel's layout: no symlinks, symlinks.txt
+          # lists them for qules.load to recreate.
+          with ZipFile(wheel) as source, ZipFile(archive, "w", ZIP_DEFLATED) as output:
+              for entry in source.infolist():
+                  name = entry.filename
+                  if not name.startswith(prefix) or name.endswith("/"):
+                      continue
+                  relative = name.removeprefix(prefix)
+                  data = source.read(entry)
+                  output.writestr(relative, data)
+                  destination = bundle / relative
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  destination.write_bytes(data)
+          manifest = bundle / "symlinks.txt"
+          if manifest.is_file():
+              for line in manifest.read_text(encoding="utf-8").splitlines():
+                  link, target = line.split("\t")
+                  (bundle / link).symlink_to(target)
+          print(f"{archive}: {archive.stat().st_size / 2**20:.0f} MB")
+          PY
+          toolbox="$runner_temp/toolbox"
+          mkdir -p "$toolbox"
+          cp -R bindings/matlab/+qules "$toolbox/"
+          python .github/scripts/matlab_write_bundles.py "$QULES_RELEASE" \
+            "$toolbox/+qules/private/bundles.m" "dist/qules-bundle-${{ matrix.platform }}.zip"
+          echo "QULES_STAGED_BUNDLE=$bundle" >> "$GITHUB_ENV"
+          echo "QULES_TOOLBOX=$toolbox" >> "$GITHUB_ENV"
+
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2025a
+
+      - name: Generate the MATLAB prototype and thunk
+        if: runner.os != 'Windows'
+        uses: matlab-actions/run-command@v2
+        with:
+          command: addpath('.github/scripts'); matlab_package_prototype(getenv('QULES_STAGED_BUNDLE'), fullfile(pwd, 'dist', 'parts'));
+
+      - name: Add the thunk to the test toolbox
+        if: runner.os != 'Windows'
+        run: cp dist/parts/* "$QULES_TOOLBOX/+qules/private/"
+
+      - name: Test the loader with the bundle archive
+        uses: matlab-actions/run-command@v2
+        with:
+          command: >-
+            addpath('.github/scripts');
+            matlab_toolbox_test(fullfile(pwd, 'dist', 'qules-bundle-${{ matrix.platform }}.zip'), getenv('QULES_TOOLBOX'));
+            clear all;
+            r = qules.optimize(@(x) (x(1) - 1)^2 + 10 * (x(2) + 2)^2, [3; 1], 'max_evals', 40);
+            assert(r.f_best < 1e-12, 'after clear all: f_best = %g', r.f_best);
+            disp('PASS  clear all: optimizer still works')
+
+      # Julia used to crash now and then while MATLAB quit. Each step is a
+      # fresh MATLAB process (run-command provides the license) that leaves a
+      # live Session behind and must exit with status 0.
+      - name: Exit cleanly (session 1 of 5)
+        uses: matlab-actions/run-command@v2
+        with:
+          command: addpath('.github/scripts'); matlab_exit_session();
+      - name: Exit cleanly (session 2 of 5)
+        uses: matlab-actions/run-command@v2
+        with:
+          command: addpath('.github/scripts'); matlab_exit_session();
+      - name: Exit cleanly (session 3 of 5)
+        uses: matlab-actions/run-command@v2
+        with:
+          command: addpath('.github/scripts'); matlab_exit_session();
+      - name: Exit cleanly (session 4 of 5)
+        uses: matlab-actions/run-command@v2
+        with:
+          command: addpath('.github/scripts'); matlab_exit_session();
+      - name: Exit cleanly (session 5 of 5)
+        uses: matlab-actions/run-command@v2
+        with:
+          command: addpath('.github/scripts'); matlab_exit_session();
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qules-matlab-${{ matrix.platform }}
+          path: dist
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Crash dumps
+        if: always()
+        run: |
+          for f in "$HOME"/matlab_crash_dump.*; do
+            [ -e "$f" ] || continue
+            echo "=== $f"; head -n 120 "$f"
+          done
+
+  toolbox:
+    needs: bundles
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: qules-matlab-*
+          merge-multiple: true
+          path: dist
+
+      - name: Assemble the toolbox
+        run: |
+          toolbox="$RUNNER_TEMP/toolbox"
+          mkdir -p "$toolbox"
+          cp -R bindings/matlab/+qules bindings/matlab/README.md "$toolbox/"
+          cp dist/parts/* "$toolbox/+qules/private/"
+          python3 .github/scripts/matlab_write_bundles.py "$QULES_RELEASE" \
+            "$toolbox/+qules/private/bundles.m" dist/qules-bundle-*.zip
+          cat "$toolbox/+qules/private/bundles.m"
+          ls -l "$toolbox/+qules/private"
+          echo "QULES_TOOLBOX=$toolbox" >> "$GITHUB_ENV"
+
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2025a
+
+      - name: Package the toolbox
+        uses: matlab-actions/run-command@v2
+        with:
+          command: >-
+            addpath('.github/scripts');
+            matlab_package_toolbox(getenv('QULES_TOOLBOX'), fullfile(pwd, 'dist', 'QULES.mltbx'), getenv('QULES_RELEASE'));
+
+      - name: Install the toolbox
+        uses: matlab-actions/run-command@v2
+        with:
+          command: matlab.addons.install(fullfile(pwd, 'dist', 'QULES.mltbx'), true);
+
+      - name: Test the installed toolbox
+        uses: matlab-actions/run-command@v2
+        with:
+          command: >-
+            addpath('.github/scripts'); matlab_toolbox_test(fullfile(pwd, 'dist', 'qules-bundle-linux-x86_64.zip'));
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qules-matlab-release
+          path: |
+            dist/QULES.mltbx
+            dist/qules-bundle-*.zip
+          compression-level: 0
+          if-no-files-found: error
+
+  release:
+    needs: toolbox
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: qules-matlab-release
+      # Draft first: File Exchange picks up a release as soon as it is
+      # published, so every file must be attached before that.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # qules.install_bundle downloads from the tag named by QULES_RELEASE.
+          [[ "$TAG" == "$QULES_RELEASE" ]] || { echo "tag $TAG != QULES_RELEASE $QULES_RELEASE"; exit 1; }
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
+            --title "QULES for MATLAB $TAG" \
+            --notes "Install QULES.mltbx on any platform. The first call to qules.load() downloads the native library for that platform from this release." \
+            QULES.mltbx qules-bundle-*.zip
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false

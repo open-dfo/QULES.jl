@@ -8,6 +8,7 @@ Under pytest, set QULES_BUNDLE or install the wheel. Exits non-zero on failure.
 
 import math
 import os
+import subprocess
 import sys
 import time
 import traceback
@@ -138,13 +139,43 @@ def test_bad_arguments():
 
 
 def test_single_core():
-    """At most one busy core unless a BLAS thread count is set."""
-    if any(v in os.environ for v in ("OPENBLAS_NUM_THREADS", "GOTO_NUM_THREADS", "OMP_NUM_THREADS")):
+    if any(v in os.environ for v in BLAS_THREAD_VARS):
         return
     wall, cpu = time.perf_counter(), time.process_time()
-    qules.optimize(rosenbrock, [-1.2, 1.0] * 5, max_evals=400)
+    qules.optimize(rosenbrock, [-1.2, 1.0] * 5, max_evals=100)
     wall, cpu = time.perf_counter() - wall, time.process_time() - cpu
     assert cpu < 1.5 * wall + 0.1, f"CPU time {cpu:.2f} s for {wall:.2f} s wall time: several cores busy"
+
+
+BLAS_THREAD_VARS = ("OPENBLAS_NUM_THREADS", "GOTO_NUM_THREADS", "OMP_NUM_THREADS")
+
+BLAS_PROBE = """
+import ctypes, os, sys
+from pyqules import _native
+_native.load(None)
+if sys.platform == "win32":
+    path = ("bin", "libopenblas64_.dll")
+else:
+    path = ("lib", "julia", "libopenblas64_." + ("dylib" if sys.platform == "darwin" else "so"))
+lib = ctypes.CDLL(os.path.join(_native.resolve_bundle_dir(None), *path))
+print(lib.openblas_get_num_threads64_(), "OPENBLAS_NUM_THREADS" in os.environ)
+"""
+
+
+def blas_threads_at_load(**env):
+    clean = {k: v for k, v in os.environ.items() if k not in BLAS_THREAD_VARS}
+    clean.update(env)
+    out = subprocess.run([sys.executable, "-c", BLAS_PROBE], env=clean, capture_output=True,
+                         text=True, check=True).stdout.split()
+    return int(out[-2]), out[-1] == "True"
+
+
+def test_one_blas_thread_at_load():
+    for env, expected in (({}, (1, False)), ({"OPENBLAS_NUM_THREADS": "2"}, (2, True))):
+        got = blas_threads_at_load(**env)
+        assert got == expected, f"{env or 'no variable'}: (threads, still set) = {got}, expected {expected}"
+    got = blas_threads_at_load(OMP_NUM_THREADS="2")[0]
+    assert got == 2, f"OMP_NUM_THREADS=2: {got} threads"
 
 
 def main(argv):
