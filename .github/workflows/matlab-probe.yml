@@ -116,29 +116,29 @@ jobs:
             assert(r.f_best < 1e-12, 'after clear all: f_best = %g', r.f_best);
             disp('PASS  clear all: optimizer still works')
 
-      # Julia used to crash now and then while MATLAB quit. Each session leaves
-      # a live Session object behind and must exit with status 0.
-      - name: Exit cleanly in 10 fresh MATLAB sessions
-        run: |
-          # setup-matlab installs matlab-batch (batch licensing for public
-          # repositories) in the tool cache without adding it to PATH.
-          tool_cache="$RUNNER_TOOL_CACHE"
-          if [[ "$RUNNER_OS" == Windows ]]; then
-            tool_cache=$(cygpath -u "$tool_cache")
-          fi
-          matlab_batch=$(ls "$tool_cache"/matlab-batch/*/*/matlab-batch* | head -n 1)
-          echo "Using $matlab_batch"
-          failures=0
-          for i in $(seq 10); do
-            if "$matlab_batch" "addpath(getenv('QULES_TOOLBOX')); setenv('QULES_BUNDLE', ''); qules.load(); s = qules.Session([3; 1], 'max_evals', 20); s.tell(sum(s.ask().^2)); r = qules.optimize(@(x) sum(x.^2), [3; 1], 'max_evals', 30); assert(r.f_best < 1e-12)" > "exit-$i.log" 2>&1; then
-              echo "session $i: exit 0"
-            else
-              status=$?; failures=$((failures + 1))
-              echo "session $i: exit $status"; tail -n 20 "exit-$i.log"
-            fi
-          done
-          echo "$failures of 10 sessions failed"
-          [[ $failures == 0 ]]
+      # Julia used to crash now and then while MATLAB quit. Each step is a
+      # fresh MATLAB process (run-command provides the license) that leaves a
+      # live Session behind and must exit with status 0.
+      - name: Exit cleanly (session 1 of 5)
+        uses: matlab-actions/run-command@v2
+        with:
+          command: addpath('.github/scripts'); matlab_exit_session();
+      - name: Exit cleanly (session 2 of 5)
+        uses: matlab-actions/run-command@v2
+        with:
+          command: addpath('.github/scripts'); matlab_exit_session();
+      - name: Exit cleanly (session 3 of 5)
+        uses: matlab-actions/run-command@v2
+        with:
+          command: addpath('.github/scripts'); matlab_exit_session();
+      - name: Exit cleanly (session 4 of 5)
+        uses: matlab-actions/run-command@v2
+        with:
+          command: addpath('.github/scripts'); matlab_exit_session();
+      - name: Exit cleanly (session 5 of 5)
+        uses: matlab-actions/run-command@v2
+        with:
+          command: addpath('.github/scripts'); matlab_exit_session();
 
       - uses: actions/upload-artifact@v4
         with:
